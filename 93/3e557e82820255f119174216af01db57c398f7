@@ -1,0 +1,19 @@
+web/src/App.jsx
+  s_ac3b302587497b::t_02e6e42bfe3739 102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "933e557e82820255f119174216af01db57c398f7",
+  "prompts": {},
+  "sessions": {
+    "s_ac3b302587497b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1ee72-0229-7bc3-9116-188c73066430",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "TCDIATAN <dilan.atan@atmosware.turkcell.com.tr>"
+    }
+  }
+}
