@@ -118,7 +118,7 @@ setTimeout(checkReminders,3000).unref();
 const PORT = Number(process.env.PORT || 3001);
 app.use((err,req,res,next)=>{if(res.headersSent)return next(err);res.status(err.status||500).json({error:err.status===400?'Geçersiz JSON isteği':'İşlem tamamlanamadı'});});
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) app.listen(PORT, () => {
-  console.log(`CyberOps API  → http://localhost:${PORT}/api`);
+  console.log(`SYNTRA API  → http://localhost:${PORT}/api`);
   console.log(`MCP endpoint  → http://localhost:${PORT}/mcp`);
   console.log(`Chat modu     → ${process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? 'Claude (' + (process.env.CLAUDE_MODEL || 'claude-opus-5-5') + ')' : 'kural tabanlı (ANTHROPIC_API_KEY yok)'}`);
 });

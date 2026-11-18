@@ -1,4 +1,6 @@
-# CyberOps
+# SYNTRA
+
+**Cybersecurity Intelligence & Team Orchestration**
 
 Siber güvenlik ekipleri için görev, yedek sorumluluk, etkinlik, yetkinlik,
 raporlama ve bildirim yönetimi. React arayüzü, REST API ve MCP aynı rol
@@ -30,10 +32,12 @@ Kurulum veya bağımlılık hatasında önce `npm run install:all` çalıştır�
 
 ## Belgeler
 
-- [Kurulum ve geliştirme](docs/development.md)
-- [İş kuralları ve gereksinimler](docs/requirements.md)
-- [Doğrulama ve test kapsamı](docs/validation.md)
-- [Bağımlılık güvenliği ve yerel düzeltme](docs/dependencies/picomatch-security.md)
+- [Kurulum ve geliştirme](development.md)
+- [İş kuralları ve gereksinimler](requirements.md)
+- [Doğrulama ve test kapsamı](validation.md)
+- [Bağımlılık güvenliği ve yerel düzeltme](dependencies/picomatch-security.md)
 
 Yardımcı Markdown belgeleri `docs/` altındadır. AI çalışma yönergeleri
 `.claude/` gibi ilgili AI dizinlerinde tutulur.
+
+- [Markdown yerleşim kuralı](documentation-policy.md)

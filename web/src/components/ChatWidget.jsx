@@ -28,7 +28,7 @@ export default function ChatWidget() {
   useEffect(()=>()=>requestRef.current?.abort(),[]);
 
   useEffect(() => {
-    setMsgs([{ role: 'assistant', content: `Merhaba ${user.name.split(' ')[0]}! Ben CyberOps Asistanı. Görevleri, etkinlikleri, yetkinlikleri ve raporları sorabilir; "göster" dediğinizde ilgili ekranı sizin için açarım.` }]);
+    setMsgs([{ role: 'assistant', content: `Merhaba ${user.name.split(' ')[0]}! Ben SYNTRA Asistanı. Görevleri, etkinlikleri, yetkinlikleri ve raporları sorabilir; "göster" dediğinizde ilgili ekranı sizin için açarım.` }]);
   }, [user.id]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, busy]);
   useEffect(() => {
@@ -77,7 +77,7 @@ export default function ChatWidget() {
             <div className="flex items-center gap-2">
               <div className="rounded-lg bg-cyan-500/20 p-1.5 text-cyan-300"><Bot size={18} /></div>
               <div>
-                <div className="text-sm font-semibold">CyberOps Asistanı</div>
+                <div className="text-sm font-semibold">SYNTRA Asistanı</div>
                 <div className="text-[11px] text-slate-400">MCP ile bağlı · {user.role === 'director' ? 'Direktör' : user.role === 'manager' ? 'Yönetici' : 'Çalışan'} yetkisiyle</div>
               </div>
             </div>

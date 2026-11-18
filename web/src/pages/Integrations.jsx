@@ -40,8 +40,8 @@ export default function Integrations() {
   const revoke=async jti=>{await api('/me/api-tokens/'+jti,{method:'DELETE'});setToken('');reload();};
   const origin = window.location.origin;
   const t = token || '<TOKEN>';
-  const claudeCode = `claude mcp add --transport http cyberops ${origin}/mcp \\\n  --header "Authorization: Bearer ${t}"`;
-  const desktop = JSON.stringify({ mcpServers: { cyberops: { type: 'http', url: `${origin}/mcp`, headers: { Authorization: `Bearer ${t}` } } } }, null, 2);
+  const claudeCode = `claude mcp add --transport http syntra ${origin}/mcp \\\n  --header "Authorization: Bearer ${t}"`;
+  const desktop = JSON.stringify({ mcpServers: { syntra: { type: 'http', url: `${origin}/mcp`, headers: { Authorization: `Bearer ${t}` } } } }, null, 2);
   const curl = `curl -H "Authorization: Bearer ${t}" ${origin}/api/tasks?status=open&priority=critical`;
 
   return (

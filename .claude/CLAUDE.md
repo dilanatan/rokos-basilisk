@@ -6,7 +6,7 @@
 <!-- Hackathon görevi açıklandığında burayı doldur -->
 - **Problem:** Siber güvenlik ekipleri için görev yönetim aracı. Minimum özellikler: (1) günlük ve yedek işlerin görev olarak atanması/takibi, (2) bireysel/kurumsal etkinlik ve bireysel yetkinlik yönetimi, (3) çalışan/yönetici/direktör yetkilendirmesi, (4) toplu raporlama ve bildirim, (5) API veya MCP ile veri paylaşımı.
 - **Ekstra hedef:** Chatbot + MCP ile önyüz yönlendirme (asistan veriyi MCP tool'larıyla çeker, `ui_navigate` ile ekranı açar).
-- **Beklenen çıktı:** Tüm özellikleri gösteren, demo edilebilir uygulama + mimari/tech stack dokümanı (README.md).
+- **Beklenen çıktı:** Tüm özellikleri gösteren, demo edilebilir uygulama + mimari/tech stack dokümanı (docs/README.md).
 - **Değerlendirme kriterleri:** _TODO (jüri kriterleri netleşince doldur)_
 - **Teslim şekli:** _TODO_
 
@@ -37,7 +37,7 @@
 - **Kurulum:** `npm run install:all`
 - **Çalıştırma:** `npm run dev` (API :3001, web :5173). Prod: `npm run build && npm start` (tek port :3001)
 - **Demo verisini sıfırla:** `npm run seed`
-- **Test:** npm run check (lint + 29 otomatik test + build), npm run test:e2e (9 tarayıcı senaryosu), npm run audit:all. Ayrıntılar: docs/validation.md.
+- **Test:** npm run check (lint + 38 otomatik test + build), npm run test:e2e (9 tarayıcı senaryosu), npm run audit:all. Ayrıntılar: docs/validation.md.
 - **Ortam değişkenleri:** `server/.env.example`. `ANTHROPIC_API_KEY` yoksa chatbot kural tabanlı modda çalışır.
 - **Mimari kural:** Tüm iş kuralları ve RBAC `server/src/services.js` içinde. REST (`index.js`) ve MCP (`mcp.js`) sadece bu fonksiyonları çağırır. Yeni özellik = servis fonksiyonu + REST route + MCP tool (+ gerekirse chat.js kural motoru niyeti).
 - **Önyüz yönlendirme:** Sayfalar filtreleri URL query'den okur (`?status=open&priority=critical&highlight=5`). `ui_navigate` tool'u bu URL'yi üretir.
@@ -46,7 +46,7 @@
 <!-- Proje kuruldukça güncelle -->
 ```
 /
-├── CLAUDE.md, README.md, package.json (root script'ler)
+├── CLAUDE.md, docs/README.md, package.json (root script'ler)
 ├── server/
 │   ├── .env.example
 │   └── src/  index.js · services.js · mcp.js · chat.js · notify.js · auth.js · db.js · seed.js
@@ -77,3 +77,6 @@
 - Windows'ta bash heredoc içinde Türkçe kesme işareti sorun çıkarabiliyor; dosyaları Write aracıyla yaz.
 
 - Yardımcı Markdown belgeleri kökteki docs/ altında tutulur. Kurulum: docs/development.md; iş kuralları: docs/requirements.md; bağımlılık düzeltmesi: docs/dependencies/picomatch-security.md.
+
+## Zorunlu belge yerleşimi
+.claude/, .codex/ ve benzeri ana AI dizinleri dışında kalan tüm proje Markdown (.md) dosyaları, README dahil, depo kökündeki docs/ altında bulunmalıdır. Kural: docs/documentation-policy.md. Her belge değişikliğinde npm run docs:check çalıştırılmalıdır.

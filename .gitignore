@@ -425,7 +425,7 @@ FodyWeavers.xsd
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
 
-# CyberOps
+# SYNTRA
 server/data/
 *.db
 *.db-*

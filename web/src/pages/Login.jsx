@@ -30,8 +30,8 @@ export default function Login() {
       <div className="w-full max-w-3xl">
         <div className="mb-8 text-center">
           <ShieldCheck className="mx-auto mb-3 text-cyan-400" size={44} />
-          <h1 className="text-3xl font-bold text-slate-50">CyberOps</h1>
-          <p className="mt-1 text-slate-400">Siber güvenlik ekipleri için görev, etkinlik ve yetkinlik yönetimi</p>
+          <h1 className="text-3xl font-bold text-slate-50">SYNTRA</h1>
+          <p lang="en" className="mt-1 text-slate-400">Cybersecurity Intelligence &amp; Team Orchestration</p>
         </div>
         <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
           <div className="mb-4 text-sm text-slate-400">Demo hesabı seçin (her rol farklı yetki seviyesini gösterir):</div>

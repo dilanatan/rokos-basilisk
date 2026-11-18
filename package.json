@@ -1,5 +1,5 @@
 {
-  "name": "rokos-basilisk",
+  "name": "syntra",
   "private": true,
   "scripts": {
     "install:all": "npm install && npm --prefix server install && npm --prefix web install",
@@ -10,8 +10,9 @@
     "lint": "eslint .",
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
-    "check": "npm run lint && npm test && npm run build",
-    "audit:all": "npm audit --audit-level=moderate && npm --prefix server audit --audit-level=moderate && npm --prefix web audit --audit-level=moderate"
+    "check": "npm run docs:check && npm run lint && npm test && npm run build",
+    "audit:all": "npm audit --audit-level=moderate && npm --prefix server audit --audit-level=moderate && npm --prefix web audit --audit-level=moderate",
+    "docs:check": "node scripts/check-docs.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",

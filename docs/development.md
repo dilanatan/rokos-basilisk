@@ -4,6 +4,9 @@
 
 Node.js 24.5+ (24.x), npm ve Windows/Linux/macOS. SQLite Node ile birlikte
 gelir. Veritabanı varsayılan olarak server/data/cyberops.db dosyasındadır.
+SYNTRA adlandırması mevcut veriyi ve oturumları etkilemez: veritabanı dosya adı,
+`cyberops_token` oturum anahtarı ve `cyberops_tour_v1_` rehber anahtarı uyumluluk
+amacıyla korunur.
 
 ```powershell
 npm run install:all
@@ -80,4 +83,4 @@ aynı transaction içindedir; SSE olayları commit sonrasında gönderilir.
 
 Yardımcı iş kuralları, kurulum, test ve güvenlik Markdown belgelerini docs/
 altına ekleyin. AI yönergelerini ilgili .claude/ veya .codex/ dizininde tutun.
-Kök README yalnızca proje giriş noktasıdır.
+Proje giriş belgesi de docs/README.md konumunda tutulur.

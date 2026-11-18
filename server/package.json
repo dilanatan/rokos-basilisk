@@ -1,5 +1,5 @@
 {
-  "name": "cyberops-server",
+  "name": "syntra-server",
   "private": true,
   "type": "module",
   "scripts": {

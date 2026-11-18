@@ -45,7 +45,7 @@ kaldırmaz; [bakım notuna](dependencies/picomatch-security.md) bakın.
 
 ## Son yerel doğrulama — 2026-11-18
 
-Node.js 24.5.0 / Windows: 29 servis, API, takvim, istemci ve güvenlik testi;
+Node.js 24.5.0 / Windows: 38 servis, API, takvim, istemci ve güvenlik testi;
 Edge üzerinde 9 tarayıcı senaryosu başarılı. Lint ve Vite 8.3.8 üretim
 derlemesi başarılı. Bu sonuçlar demo kabul kapsamını doğrular.
 

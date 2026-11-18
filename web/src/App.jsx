@@ -77,10 +77,10 @@ function Sidebar({open,onClose}) {
     {open && <button aria-label="Menüyü kapat" onClick={onClose} className="fixed inset-0 z-40 bg-black/60 md:hidden" />}
     <aside className={cx('fixed inset-y-0 left-0 z-50 w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-950 md:static md:z-auto md:flex',open?'flex':'hidden')}>
       <div className="flex items-center gap-2 px-4 py-4">
-        <ShieldCheck className="text-cyan-400" />
+        <ShieldCheck className="shrink-0 text-cyan-400" />
         <div>
-          <div className="font-bold tracking-wide text-slate-50">CyberOps</div>
-          <div className="text-[10px] uppercase tracking-widest text-slate-500">SecOps Task Hub</div>
+          <div className="font-bold tracking-wide text-slate-50">SYNTRA</div>
+          <div lang="en" className="text-[10px] leading-relaxed tracking-wide text-slate-500">Cybersecurity Intelligence &amp; Team Orchestration</div>
         </div>
       </div>
       <nav className="flex-1 space-y-0.5 px-2">
@@ -111,7 +111,7 @@ function Topbar({onMenu}) {
   const switchTo = async (id) => { setOpen(false); const nextUser=await login(id); nav(homePath(nextUser)); };
   return (
     <header className="relative z-30 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/80 px-4 py-2.5 backdrop-blur">
-      <div className="flex items-center gap-2 md:hidden"><button onClick={onMenu} aria-label="Gezinme menüsünü aç" className="rounded-lg p-2 hover:bg-slate-800"><Menu size={20}/></button><ShieldCheck className="text-cyan-400" size={20} /><b>CyberOps</b></div>
+      <div className="flex items-center gap-2 md:hidden"><button onClick={onMenu} aria-label="Gezinme menüsünü aç" className="rounded-lg p-2 hover:bg-slate-800"><Menu size={20}/></button><ShieldCheck className="text-cyan-400" size={20} /><b>SYNTRA</b></div>
       <div className="hidden text-xs text-slate-500 md:block">Demo modu · rol değiştirerek yetki seviyelerini deneyin →</div>
       <div className="flex items-center gap-2">
         <button data-tour="help" title="Siteyi öğren" onClick={()=>bus.dispatchEvent(new Event('start-tour'))} className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm text-cyan-300 hover:bg-slate-800"><CircleHelp size={18}/><span className="hidden sm:inline">Siteyi öğren</span></button>

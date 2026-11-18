@@ -45,7 +45,7 @@ const slimTask = (t) => ({
 });
 
 export function createMcpServer(user) {
-  const server = new McpServer({ name: 'cyberops-mcp', version: '1.0.0' });
+  const server = new McpServer({ name: 'syntra-mcp', version: '1.0.0' });
   const tool = (name, description, inputSchema, fn, annotations = {}) =>
     server.registerTool(name, { description, inputSchema, annotations }, wrap(fn));
 

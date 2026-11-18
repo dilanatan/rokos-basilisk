@@ -21,7 +21,7 @@ const getClient = () => (anthropic ??= new Anthropic({timeout:15000,maxRetries:0
 
 async function connectMcp(token) {
   const port = process.env.PORT || 3001;
-  const client = new Client({ name: 'cyberops-chatbot', version: '1.0.0' });
+  const client = new Client({ name: 'syntra-chatbot', version: '1.0.0' });
   const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
   });
@@ -39,7 +39,7 @@ async function callTool(mcp, name, args) {
 }
 
 function systemPrompt(user) {
-  return `Sen "CyberOps Asistanı"sın: bir siber güvenlik ekibinin görev, etkinlik, yetkinlik, raporlama ve bildirim yönetim uygulamasının içindeki yardımcısın.
+  return `Sen "SYNTRA Asistanı"sın: SYNTRA (Cybersecurity Intelligence & Team Orchestration) uygulamasında siber güvenlik ekiplerinin görev, etkinlik, yetkinlik, raporlama ve bildirim yönetimi yardımcısın.
 Kullanıcı: ${user.name} — ${user.title}, ekip: ${user.team}, rol: ${ROLE_LABEL[user.role]} (${user.role}). Bugün: ${new Date().toISOString().slice(0, 10)}.
 
 Çalışma şekli:
