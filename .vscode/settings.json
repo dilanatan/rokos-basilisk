@@ -1,0 +1,4 @@
+{
+    "chat.utilityModel": "saka/glm-5.3",
+    "chat.utilitySmallModel": "saka/glm-5.3"
+}

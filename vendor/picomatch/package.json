@@ -1,0 +1,10 @@
+{
+    "repository":  "https://github.com/micromatch/picomatch",
+    "license":  "MIT",
+    "upstreamParserSha256":  "4E1E05447668AA1E94366C5516A2BCD8F5FFF800CC92B1D0CD7D77703B8618C4",
+    "name":  "@cyberops/picomatch",
+    "private":  true,
+    "version":  "4.0.7+cyberops.1",
+    "description":  "Local picomatch 4.0.7 fork rejecting repeated extglobs",
+    "main":  "index.js"
+}
