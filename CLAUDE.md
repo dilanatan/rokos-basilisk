@@ -1,7 +1,6 @@
 # CLAUDE.md — Hackathon Projesi
 
-> ⏱️ **Toplam süre: 3 saat.** Bu süre her kararın önünde gelir. Mükemmel değil, **çalışan ve demo edileb
-ilir** bir ürün hedefliyoruz.
+> ⏱️ **Toplam süre: 3 saat.** Bu süre her kararın önünde gelir. Mükemmel değil, **çalışan ve demo edilebilir** bir ürün hedefliyoruz.
 
 ## 1. Görev
 <!-- Hackathon görevi açıklandığında burayı doldur -->
@@ -17,32 +16,24 @@ ilir** bir ürün hedefliyoruz.
 | 0:20 – 0:40 | İskelet | Proje kuruldu, "hello world" çalışıyor, ilk commit atıldı |
 | 0:40 – 2:00 | MVP geliştirme | Ana akış uçtan uca çalışıyor |
 | 2:00 – 2:30 | İyileştirme | Hatalar giderildi, UI toparlandı, olası ek özellikler eklendi |
-| 2:30 – 2:50 | Dondurma | **Yeni öze verisi, son testler yapılır |
+| 2:30 – 2:50 | Dondurma | **Yeni özellik eklenmez.** README, demo verisi, son testler yapılır |
 | 2:50 – 3:00 | Teslim | Son push, demo provası |
 
-**Kural:** Bir iş planlanan süreyi 15kapsamı daralt ya da daha basit bir yo
-l seç.
+**Kural:** Bir iş planlanan süreyi 15 dakikadan fazla aşarsa dur, kapsamı daralt ya da daha basit bir yol seç.
 
-## 3. Çalışma Prensipleri (Claude içi
-- **Önce MVP:** En kısa yoldan uçtan uca çalışan akışı kur, sonra geliştir. Eksik parçalar için mock vey
-a hardcode kullanılabilir.
-- **Az soru, çok iş:** Makul bir varsayılan varsa onu seç, varsayımı tek satırla belirt ve devam et. Sad
-ece gerçekten bloklayan konularda soru sor.
-- **Bildik teknolojiler:** Yeni framework öğrenmeye zaman yok. Ekibin bildiği ve hızlı kurulan araçları
-tercih et.
-- **Sık commit:** Çalışan her adımdan sonra küçük bir commit at. Böylece geri dönüş her zaman mümkün olu
-r.
-- **Over-engineering yok:** Soyutlamalazım olur" kodu yazılmaz. Test sadece
- kritik mantık için yazılır.
-- **Her değişiklikten sonra çalıştır:ı doğrula. "Çalışmalı" demek yeterli d
-eğildir.
-- **Secret yönetimi:** API anahtarları `.env` dosyasına konur, `.env` `.gitignore`'a eklenir. Hiçbir sec
-ret repoya commit edilmez.
+## 3. Çalışma Prensipleri (Claude için)
+- **Önce MVP:** En kısa yoldan uçtan uca çalışan akışı kur, sonra geliştir. Eksik parçalar için mock veya hardcode kullanılabilir.
+- **Az soru, çok iş:** Makul bir varsayılan varsa onu seç, varsayımı tek satırla belirt ve devam et. Sadece gerçekten bloklayan konularda soru sor.
+- **Bildik teknolojiler:** Yeni framework öğrenmeye zaman yok. Ekibin bildiği ve hızlı kurulan araçları tercih et.
+- **Sık commit:** Çalışan her adımdan sonra küçük bir commit at. Böylece geri dönüş her zaman mümkün olur.
+- **Over-engineering yok:** Soyutlama, genel çözüm ya da "ileride lazım olur" kodu yazılmaz. Test sadece kritik mantık için yazılır.
+- **Her değişiklikten sonra çalıştır:** Kodun gerçekten çalıştığını doğrula. "Çalışmalı" demek yeterli değildir.
+- **Secret yönetimi:** API anahtarları `.env` dosyasına konur, `.env` `.gitignore`'a eklenir. Hiçbir secret repoya commit edilmez.
 
 ## 4. Teknik Bilgiler
 <!-- Repo klonlandıktan sonra doldur -->
 - **Dil / Framework:** _TODO_
-- **Kurulum:** `TODO (ör. npm installs.txt)`
+- **Kurulum:** `TODO (ör. npm install / pip install -r requirements.txt)`
 - **Çalıştırma:** `TODO (ör. npm run dev / python app.py)`
 - **Test:** `TODO`
 - **Ortam değişkenleri:** `.env.example` dosyasına bakın.
@@ -58,8 +49,7 @@ ret repoya commit edilmez.
 ```
 
 ## 6. Git Akışı
-- Hız için doğrudan `main` dalında çanı anda kod yazıyorsa her biri kısa öm
-ürlü bir feature branch açar ve sık merge eder.
+- Hız için doğrudan `main` dalında çalışılır. Birden fazla kişi aynı anda kod yazıyorsa her biri kısa ömürlü bir feature branch açar ve sık merge eder.
 - Commit mesajları kısa ve açıklayıcı olmalı: `feat: login akışı`, `fix: boş girdi hatası`.
 - Push etmeden önce kodun çalıştığını kontrol et.
 
@@ -72,5 +62,5 @@ ret repoya commit edilmez.
 - [ ] Canlı demo başarısız olursa diye ekran görüntüsü veya video yedeği hazır
 
 ## 8. Kararlar ve Notlar
-<!-- Önemli kararları buraya kısa nota bile Claude buradan devam edebilir.
--->
+<!-- Önemli kararları buraya kısa notlarla ekle. Context sıfırlansa bile Claude buradan devam edebilir. -->
+- _ör. 0:25 — Veritabanı yerine JSON dosyası kullanılacak (hız için)_
