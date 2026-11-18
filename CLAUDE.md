@@ -4,10 +4,11 @@
 
 ## 1. Görev
 <!-- Hackathon görevi açıklandığında burayı doldur -->
-- **Problem:** _TODO_
-- **Beklenen çıktı:** _TODO_
-- **Değerlendirme kriterleri:** _TODO (ör. işlevsellik, yaratıcılık, AI kullanımı, sunum)_
-- **Teslim şekli:** _TODO (repo'ya push, demo videosu, canlı sunum vb.)_
+- **Problem:** Siber güvenlik ekipleri için görev yönetim aracı. Minimum özellikler: (1) günlük ve yedek işlerin görev olarak atanması/takibi, (2) bireysel/kurumsal etkinlik ve bireysel yetkinlik yönetimi, (3) çalışan/yönetici/direktör yetkilendirmesi, (4) toplu raporlama ve bildirim, (5) API veya MCP ile veri paylaşımı.
+- **Ekstra hedef:** Chatbot + MCP ile önyüz yönlendirme (asistan veriyi MCP tool'larıyla çeker, `ui_navigate` ile ekranı açar).
+- **Beklenen çıktı:** Tüm özellikleri gösteren, demo edilebilir uygulama + mimari/tech stack dokümanı (README.md).
+- **Değerlendirme kriterleri:** _TODO (jüri kriterleri netleşince doldur)_
+- **Teslim şekli:** _TODO_
 
 ## 2. Zaman Planı
 | Süre | Aşama | Çıktı |
@@ -32,20 +33,25 @@
 
 ## 4. Teknik Bilgiler
 <!-- Repo klonlandıktan sonra doldur -->
-- **Dil / Framework:** _TODO_
-- **Kurulum:** `TODO (ör. npm install / pip install -r requirements.txt)`
-- **Çalıştırma:** `TODO (ör. npm run dev / python app.py)`
-- **Test:** `TODO`
-- **Ortam değişkenleri:** `.env.example` dosyasına bakın.
+- **Dil / Framework:** JavaScript (ESM). Backend: Node 24 + Express 5 + `node:sqlite`. Önyüz: React 19 + Vite 8 + Tailwind 4. AI: `@anthropic-ai/sdk` (claude-opus-5-5) + `@modelcontextprotocol/sdk`.
+- **Kurulum:** `npm run install:all`
+- **Çalıştırma:** `npm run dev` (API :3001, web :5173). Prod: `npm run build && npm start` (tek port :3001)
+- **Demo verisini sıfırla:** `npm run seed`
+- **Test:** Otomatik test yok; manuel uçtan uca kontrol (login → chatbot komutu → yönlendirme). Build kontrolü: `npm run build`
+- **Ortam değişkenleri:** `server/.env.example`. `ANTHROPIC_API_KEY` yoksa chatbot kural tabanlı modda çalışır.
+- **Mimari kural:** Tüm iş kuralları ve RBAC `server/src/services.js` içinde. REST (`index.js`) ve MCP (`mcp.js`) sadece bu fonksiyonları çağırır. Yeni özellik = servis fonksiyonu + REST route + MCP tool (+ gerekirse chat.js kural motoru niyeti).
+- **Önyüz yönlendirme:** Sayfalar filtreleri URL query'den okur (`?status=open&priority=critical&highlight=5`). `ui_navigate` tool'u bu URL'yi üretir.
 
 ## 5. Klasör Yapısı
 <!-- Proje kuruldukça güncelle -->
 ```
 /
-├── CLAUDE.md
-├── README.md
-├── .env.example
-└── src/
+├── CLAUDE.md, README.md, package.json (root script'ler)
+├── server/
+│   ├── .env.example
+│   └── src/  index.js · services.js · mcp.js · chat.js · notify.js · auth.js · db.js · seed.js
+└── web/
+    └── src/  App.jsx · api.js · auth.jsx · components/ (ui, ChatWidget) · pages/
 ```
 
 ## 6. Git Akışı
@@ -63,4 +69,9 @@
 
 ## 8. Kararlar ve Notlar
 <!-- Önemli kararları buraya kısa notlarla ekle. Context sıfırlansa bile Claude buradan devam edebilir. -->
-- _ör. 0:25 — Veritabanı yerine JSON dosyası kullanılacak (hız için)_
+- Tek dil (JS) ve Node'a gömülü SQLite seçildi: native derleme/kurulum riski yok.
+- Kimlik doğrulama demo amaçlı şifresiz (kullanıcı seç → JWT). Sağ üstten rol değiştirerek RBAC gösterilir.
+- MCP server stateless Streamable HTTP (`POST /mcp`), Bearer token ile kullanıcı kapsamında çalışır. Chatbot da MCP istemcisi olarak aynı endpoint'i kullanır.
+- Chatbot: Claude (`claude-opus-5-5`, effort low, `fallbacks: "default"`). Anahtar yoksa/hata olursa kural tabanlı Türkçe niyet motoru devreye girer (demo güvencesi).
+- Canlı güncellemeler SSE ile: `notification` (zil + toast) ve `change` (sayfalar otomatik yenilenir).
+- Windows'ta bash heredoc içinde Türkçe kesme işareti sorun çıkarabiliyor; dosyaları Write aracıyla yaz.

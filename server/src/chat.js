@@ -14,6 +14,7 @@ import { STATUS_LABEL, PRIORITY_LABEL } from './services.js';
 const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5-5';
 const hasClaudeCreds = () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 let anthropic = null;
+let betaSupported = true;
 const getClient = () => (anthropic ??= new Anthropic());
 
 async function connectMcp(token) {
@@ -55,17 +56,28 @@ async function runClaude(user, mcp, messages) {
   const toolCalls = [];
 
   for (let i = 0; i < 8; i++) {
-    const response = await getClient().beta.messages.create({
+    const base = {
       model: MODEL,
       max_tokens: 16000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
       thinking: { type: 'adaptive' },
       output_config: { effort: 'low' },
       system: systemPrompt(user),
       tools,
       messages: convo,
-    });
+    };
+    let response;
+    if (betaSupported) {
+      try {
+        // Sunucu tarafı fallback: güvenlik sınıflandırıcısı reddederse istek önerilen modelde yeniden çalışır
+        response = await getClient().beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
+      } catch (e) {
+        // Kurumsal gateway/proxy beta parametrelerini desteklemiyorsa bir kez sade istekle dene
+        if (!(e instanceof Anthropic.BadRequestError)) throw e;
+        console.warn('[chat] Beta parametreleri reddedildi, sade istekle devam ediliyor:', e.message);
+        betaSupported = false;
+      }
+    }
+    response ??= await getClient().messages.create(base);
 
     if (response.stop_reason === 'refusal') {
       return { reply: 'Bu isteği işleyemedim, farklı şekilde ifade edebilir misiniz?', actions, toolCalls };
