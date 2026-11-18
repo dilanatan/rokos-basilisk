@@ -99,7 +99,7 @@ function Topbar() {
   useEffect(() => { api('/auth/demo-users').then(setUsers); }, []);
   const switchTo = async (id) => { setOpen(false); await login(id); nav('/'); };
   return (
-    <header className="flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/80 px-4 py-2.5 backdrop-blur">
+    <header className="relative z-30 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/80 px-4 py-2.5 backdrop-blur">
       <div className="flex items-center gap-2 md:hidden"><ShieldCheck className="text-cyan-400" size={20} /><b>CyberOps</b></div>
       <div className="hidden text-xs text-slate-500 md:block">Demo modu · rol değiştirerek yetki seviyelerini deneyin →</div>
       <div className="flex items-center gap-2">
