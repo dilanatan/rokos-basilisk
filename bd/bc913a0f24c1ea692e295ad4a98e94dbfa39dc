@@ -1,0 +1,68 @@
+server/src/index.js
+  s_ac3b302587497b::t_c3bfa10e6340ab 121
+scripts/check-docs.mjs
+  s_ac3b302587497b::t_527e0393f75f68 1-9
+web/src/App.jsx
+  s_ac3b302587497b::t_c3bfa10e6340ab 80,82-83,114
+package.json
+  s_ac3b302587497b::t_c3bfa10e6340ab 2
+  s_ac3b302587497b::t_d81deb9da9d4bb 13-15
+docs/validation.md
+  s_ac3b302587497b::t_0f4a06e94822ec 48
+docs/README.md
+  s_ac3b302587497b::t_0f4a06e94822ec 4-43
+  s_ac3b302587497b::t_c3bfa10e6340ab 1-3
+web/src/components/Tutorial.jsx
+  s_ac3b302587497b::t_c3bfa10e6340ab 13
+web/src/pages/Login.jsx
+  s_ac3b302587497b::t_c3bfa10e6340ab 33-34
+web/package.json
+  s_ac3b302587497b::t_c3bfa10e6340ab 2
+server/src/chat.js
+  s_ac3b302587497b::t_c3bfa10e6340ab 24,42
+web/index.html
+  s_ac3b302587497b::t_c3bfa10e6340ab 7-8
+.gitignore
+  s_ac3b302587497b::t_c3bfa10e6340ab 428
+tests/validation.test.mjs
+  s_ac3b302587497b::t_367bdac55123d8 1-42
+web/src/components/ChatWidget.jsx
+  s_ac3b302587497b::t_c3bfa10e6340ab 31,80
+server/package.json
+  s_ac3b302587497b::t_c3bfa10e6340ab 2
+server/src/mcp.js
+  s_ac3b302587497b::t_c3bfa10e6340ab 48
+docs/documentation-policy.md
+  s_ac3b302587497b::t_7af109ded8d472 1-18
+.claude/CLAUDE.md
+  s_ac3b302587497b::t_0f4a06e94822ec 9,40,49,80-82
+web/src/pages/Integrations.jsx
+  s_ac3b302587497b::t_c3bfa10e6340ab 43-44
+docs/development.md
+  s_ac3b302587497b::t_0f4a06e94822ec 86
+  s_ac3b302587497b::t_c3bfa10e6340ab 7-9
+tests/rate-limit.test.mjs
+  s_ac3b302587497b::t_7cffe3ade3ea04 1-36
+package-lock.json
+  s_ac3b302587497b::t_5f08aba0ce439e 2,7
+server/package-lock.json
+  s_ac3b302587497b::t_b8d1d86ca42dcd 2,7
+web/package-lock.json
+  s_ac3b302587497b::t_789937538ae7eb 2,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bdbc913a0f24c1ea692e295ad4a98e94dbfa39dc",
+  "prompts": {},
+  "sessions": {
+    "s_ac3b302587497b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1ee72-0229-7bc3-9116-188c73066430",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "TCDIATAN <dilan.atan@atmosware.turkcell.com.tr>"
+    }
+  }
+}
