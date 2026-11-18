@@ -1,3 +1,5 @@
+import {useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import { X } from 'lucide-react';
 
 export const STATUS = {
@@ -40,14 +42,16 @@ export function Card({ className, children, title, action }) {
   );
 }
 
-export function Button({ variant = 'primary', className, ...p }) {
+export function Button({ variant = 'primary', className, onClick, disabled, ...p }) {
+  const [busy,setBusy]=useState(false);
+  const click=async event=>{if(busy)return;setBusy(true);try{await onClick?.(event);}catch(e){alert(e.message);}finally{setBusy(false);}};
   const v = {
     primary: 'bg-cyan-500 text-slate-950 hover:bg-cyan-400 font-semibold',
     ghost: 'bg-slate-800 text-slate-200 hover:bg-slate-700',
     danger: 'bg-red-500/15 text-red-300 hover:bg-red-500/25',
     outline: 'border border-slate-700 text-slate-200 hover:bg-slate-800',
   }[variant];
-  return <button className={cx('inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition disabled:opacity-50', v, className)} {...p} />;
+  return <button className={cx('inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition disabled:opacity-50', v, className)} {...p} disabled={disabled||busy} aria-busy={busy} onClick={onClick?click:undefined} />;
 }
 
 export const inputCls = 'w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none';
@@ -66,19 +70,30 @@ export function Field({ label, children }) {
   return <label className="block space-y-1"><span className="text-xs text-slate-400">{label}</span>{children}</label>;
 }
 
-export function Modal({ open, onClose, title, children, wide }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className={cx('max-h-[90vh] w-full overflow-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl', wide ? 'max-w-3xl' : 'max-w-lg')} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
-          <h3 className="font-semibold">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={18} /></button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
+export function Modal({open,onClose,title,children,wide}) {
+  const panel=useRef(null),closeRef=useRef(onClose);closeRef.current=onClose;
+  useEffect(()=>{
+    if(!open)return;
+    const previous=document.activeElement;
+    const timer=setTimeout(()=>panel.current?.querySelector('input,select,textarea,button')?.focus(),0);
+    const key=e=>{
+      if(e.key==='Escape'){e.stopPropagation();closeRef.current();}
+      if(e.key==='Tab'){
+        const focusable=[...panel.current.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex="0"]')];
+        const first=focusable[0],last=focusable.at(-1);
+        if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}
+        else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
+      }
+    };
+    document.addEventListener('keydown',key);
+    return()=>{clearTimeout(timer);document.removeEventListener('keydown',key);previous?.focus?.();};
+  },[open]);
+  if(!open)return null;
+  return createPortal(<div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div ref={panel} role="dialog" aria-modal="true" aria-label={typeof title==='string'?title:'Düzenleme'} className={cx('max-h-[90vh] w-full overflow-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl',wide?'max-w-3xl':'max-w-lg')} onClick={e=>e.stopPropagation()}>
+      <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3"><h3 className="font-semibold">{title}</h3><button type="button" aria-label="Pencereyi kapat" onClick={onClose} className="p-1 text-slate-400 hover:text-white"><X size={18}/></button></div><div className="p-5">{children}</div>
     </div>
-  );
+  </div>,document.body);
 }
 
 export function Stat({ label, value, icon: Icon, tone = 'cyan', hint }) {

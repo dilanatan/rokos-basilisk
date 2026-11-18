@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { KeyRound, Copy, Check, Plug, Bot, Terminal } from 'lucide-react';
 import { api } from '../api.js';
-import { useAuth } from '../auth.jsx';
+import { useAuth, useLive } from '../auth.jsx';
 import { Card, Button, PageHeader, Badge } from '../components/ui.jsx';
 
 const ENDPOINTS = [
@@ -16,9 +16,9 @@ const ENDPOINTS = [
   ['GET', '/api/reports/tasks.csv', 'CSV dışa aktarma (yönetici+)'],
   ['POST', '/api/reports/digest', 'Toplu bildirim gönder (yönetici+)'],
   ['GET', '/api/notifications/stream', 'Canlı bildirim akışı (SSE)'],
-  ['POST', '/mcp', 'MCP Streamable HTTP endpoint (19 tool)'],
+  ['POST', '/mcp', 'MCP Streamable HTTP endpoint (24 tool)'],
 ];
-const TOOLS = ['whoami', 'list_team_members', 'list_tasks', 'get_task', 'create_task', 'update_task', 'add_task_comment', 'list_events', 'create_event', 'join_event', 'list_competencies', 'add_skill', 'add_certification', 'list_announcements', 'create_announcement', 'get_report', 'send_digest_notifications', 'list_notifications', 'ui_navigate'];
+const TOOLS = ['whoami', 'list_team_members', 'list_tasks', 'get_task', 'create_task', 'update_task', 'add_task_comment', 'list_events', 'create_event', 'join_event', 'list_competencies', 'add_skill', 'add_certification', 'list_announcements', 'create_announcement', 'get_report', 'send_digest_notifications', 'list_notifications', 'update_event', 'update_attendance', 'update_certification', 'delete_certification', 'delete_skill', 'ui_navigate'];
 const METHOD_TONE = { GET: 'bg-emerald-500/15 text-emerald-300', POST: 'bg-cyan-500/15 text-cyan-300', PATCH: 'bg-amber-500/15 text-amber-300' };
 
 function CopyBlock({ text }) {
@@ -36,7 +36,9 @@ function CopyBlock({ text }) {
 export default function Integrations() {
   const { user } = useAuth();
   const [token, setToken] = useState('');
-  const origin = window.location.origin.replace(':5173', ':3001');
+  const {data:tokens,reload,error}=useLive('/me/api-tokens',[]);
+  const revoke=async jti=>{await api('/me/api-tokens/'+jti,{method:'DELETE'});setToken('');reload();};
+  const origin = window.location.origin;
   const t = token || '<TOKEN>';
   const claudeCode = `claude mcp add --transport http cyberops ${origin}/mcp \\\n  --header "Authorization: Bearer ${t}"`;
   const desktop = JSON.stringify({ mcpServers: { cyberops: { type: 'http', url: `${origin}/mcp`, headers: { Authorization: `Bearer ${t}` } } } }, null, 2);
@@ -53,9 +55,11 @@ export default function Integrations() {
               <div className="font-semibold">Kişisel API / MCP token</div>
               <div className="text-xs text-slate-400">{user.name} kimliğiyle ve <b>{user.role}</b> yetkisiyle çalışır. 30 gün geçerli.</div>
             </div>
-            <Button onClick={async () => setToken((await api('/me/api-token', { method: 'POST' })).token)}>Token oluştur</Button>
+            <Button onClick={async () => {setToken((await api('/me/api-token', { method: 'POST' })).token);reload();}}>Token oluştur</Button>
           </div>
           {token && <div className="mt-3"><CopyBlock text={token} /></div>}
+          {error&&<p role="alert" className="mt-3 text-red-300">{error}</p>}
+          <div className="mt-4 space-y-2 text-sm">{tokens?.map(item=><div key={item.jti} className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-2"><span>Token {item.jti.slice(0,8)} · Bitiş: {new Date(item.expires_at*1000).toLocaleDateString('tr-TR')}</span><Button variant="danger" onClick={()=>revoke(item.jti)}>Tokenı iptal et</Button></div>)}</div>
         </Card>
 
         <Card title={<span className="flex items-center gap-2"><Plug size={15} />Mimari</span>} className="lg:col-span-3">
@@ -63,7 +67,7 @@ export default function Integrations() {
             {[
               ['Önyüz (React)', 'Sayfalar + Chat widget'],
               ['Chat API', 'Claude + tool-use döngüsü'],
-              ['MCP Server', '19 tool · ui_navigate'],
+              ['MCP Server', '24 tool · ui_navigate'],
               ['Servis katmanı', 'RBAC: çalışan / yönetici / direktör'],
               ['SQLite', 'Görev · etkinlik · yetkinlik · bildirim'],
             ].map(([a, b], i) => (

@@ -37,7 +37,7 @@
 - **Kurulum:** `npm run install:all`
 - **Çalıştırma:** `npm run dev` (API :3001, web :5173). Prod: `npm run build && npm start` (tek port :3001)
 - **Demo verisini sıfırla:** `npm run seed`
-- **Test:** Otomatik test yok; manuel uçtan uca kontrol (login → chatbot komutu → yönlendirme). Build kontrolü: `npm run build`
+- **Test:** npm run check (lint + 29 otomatik test + build), npm run test:e2e (9 tarayıcı senaryosu), npm run audit:all. Ayrıntılar: docs/validation.md.
 - **Ortam değişkenleri:** `server/.env.example`. `ANTHROPIC_API_KEY` yoksa chatbot kural tabanlı modda çalışır.
 - **Mimari kural:** Tüm iş kuralları ve RBAC `server/src/services.js` içinde. REST (`index.js`) ve MCP (`mcp.js`) sadece bu fonksiyonları çağırır. Yeni özellik = servis fonksiyonu + REST route + MCP tool (+ gerekirse chat.js kural motoru niyeti).
 - **Önyüz yönlendirme:** Sayfalar filtreleri URL query'den okur (`?status=open&priority=critical&highlight=5`). `ui_navigate` tool'u bu URL'yi üretir.
@@ -75,3 +75,5 @@
 - Chatbot: Claude (`claude-opus-5-5`, effort low, `fallbacks: "default"`). Anahtar yoksa/hata olursa kural tabanlı Türkçe niyet motoru devreye girer (demo güvencesi).
 - Canlı güncellemeler SSE ile: `notification` (zil + toast) ve `change` (sayfalar otomatik yenilenir).
 - Windows'ta bash heredoc içinde Türkçe kesme işareti sorun çıkarabiliyor; dosyaları Write aracıyla yaz.
+
+- Yardımcı Markdown belgeleri kökteki docs/ altında tutulur. Kurulum: docs/development.md; iş kuralları: docs/requirements.md; bağımlılık düzeltmesi: docs/dependencies/picomatch-security.md.

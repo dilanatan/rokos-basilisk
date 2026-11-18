@@ -24,6 +24,8 @@ export default function ChatWidget() {
   const nav = useNavigate();
   const loc = useLocation();
   const endRef = useRef(null);
+  const requestRef=useRef(null);
+  useEffect(()=>()=>requestRef.current?.abort(),[]);
 
   useEffect(() => {
     setMsgs([{ role: 'assistant', content: `Merhaba ${user.name.split(' ')[0]}! Ben CyberOps Asistanı. Görevleri, etkinlikleri, yetkinlikleri ve raporları sorabilir; "göster" dediğinizde ilgili ekranı sizin için açarım.` }]);
@@ -42,14 +44,18 @@ export default function ChatWidget() {
     const history = [...msgs, { role: 'user', content }];
     setMsgs(history);
     setBusy(true);
+    const controller=new AbortController();requestRef.current=controller;
     try {
-      const payload = history.filter((m, i) => i > 0 && (m.role === 'user' || m.role === 'assistant')).map(({ role, content }) => ({ role, content }));
-      const r = await api('/chat', { method: 'POST', body: { messages: payload, page: loc.pathname } });
+      const payload = history.filter((m, i) => i > 0 && (m.role === 'user' || m.role === 'assistant')).map(({ role, content }) => ({ role, content })).slice(-12);
+      if(payload[0]?.role==='assistant')payload.shift();
+      const r = await api('/chat', { method: 'POST', signal:controller.signal, body: { messages: payload, page: loc.pathname, requestId:crypto.randomUUID() } });
+      if(controller.signal.aborted)return;
       setMsgs((m) => [...m, { role: 'assistant', content: r.reply, tools: r.toolCalls, actions: r.actions, mode: r.mode }]);
       // MCP ui_navigate → önyüz yönlendirmesi
       const last = r.actions?.filter((a) => a.type === 'navigate').at(-1);
       if (last) nav(last.path);
     } catch (e) {
+      if(controller.signal.aborted)return;
       setMsgs((m) => [...m, { role: 'assistant', content: `⚠ ${e.message}` }]);
     } finally {
       setBusy(false);
@@ -112,7 +118,7 @@ export default function ChatWidget() {
             </div>
           )}
           <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2 border-t border-slate-800 p-3">
-            <input autoFocus value={input} onChange={(e) => setInput(e.target.value)} placeholder="Bir şey sorun veya komut verin…"
+            <input autoFocus maxLength={4000} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Bir şey sorun veya komut verin…"
               className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none" />
             <button disabled={busy || !input.trim()} className="rounded-xl bg-cyan-500 px-3 text-slate-950 disabled:opacity-40"><Send size={16} /></button>
           </form>

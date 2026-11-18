@@ -1,3 +1,4 @@
+import {RequestState} from '../components/RequestState.jsx';
 import { useState } from 'react';
 import { Megaphone, Plus } from 'lucide-react';
 import { api } from '../api.js';
@@ -6,7 +7,8 @@ import { Card, Button, Input, Textarea, Field, Modal, PageHeader, Badge, Avatar,
 
 export default function Announcements() {
   const { user } = useAuth();
-  const { data } = useLive('/announcements', ['announcements']);
+  const request=useLive('/announcements',['announcements']);
+  const {data}=request;
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ title: '', body: '', audience: 'all' });
   return (
@@ -14,6 +16,7 @@ export default function Announcements() {
       <PageHeader title="Duyurular" subtitle="Kurumsal ve ekip içi iletişim">
         {isManager(user) && <Button onClick={() => setOpen(true)}><Plus size={16} /> Duyuru yayınla</Button>}
       </PageHeader>
+      <RequestState {...request}/>
       {data && !data.length && <Empty>Duyuru yok.</Empty>}
       <div className="space-y-3">
         {data?.map((a) => (

@@ -7,15 +7,17 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { all } from './db.js';
-import { ROLE_LABEL } from './auth.js';
+import { all, get, run } from './db.js';
+import { ROLE_LABEL, HttpError } from './auth.js';
 import { STATUS_LABEL, PRIORITY_LABEL } from './services.js';
 
+import {createHash,randomUUID} from 'node:crypto';
+const READ_ONLY=new Set(['whoami','list_team_members','list_tasks','get_task','list_events','list_competencies','list_announcements','get_report','list_notifications','ui_navigate']);
 const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5-5';
 const hasClaudeCreds = () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 let anthropic = null;
 let betaSupported = true;
-const getClient = () => (anthropic ??= new Anthropic());
+const getClient = () => (anthropic ??= new Anthropic({timeout:15000,maxRetries:0}));
 
 async function connectMcp(token) {
   const port = process.env.PORT || 3001;
@@ -23,7 +25,7 @@ async function connectMcp(token) {
   const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
   });
-  await client.connect(transport);
+  try {await client.connect(transport,{timeout:15000});} catch(e) {await client.close().catch(()=>{});throw e;}
   return client;
 }
 
@@ -48,17 +50,16 @@ Kullanıcı: ${user.name} — ${user.title}, ekip: ${user.team}, rol: ${ROLE_LAB
 - Tarihleri kullanıcı "yarın", "cuma" gibi söylerse bugüne göre YYYY-MM-DD'ye çevir.`;
 }
 
-async function runClaude(user, mcp, messages) {
+async function runClaude(user, mcp, messages, trace, signal) {
   const { tools: mcpTools } = await mcp.listTools();
   const tools = mcpTools.map((t) => ({ name: t.name, description: t.description || '', input_schema: t.inputSchema }));
   const convo = messages.slice(-12).map((m) => ({ role: m.role, content: String(m.content) }));
-  const actions = [];
-  const toolCalls = [];
+  const {actions,toolCalls} = trace;
 
   for (let i = 0; i < 8; i++) {
     const base = {
       model: MODEL,
-      max_tokens: 16000,
+      max_tokens: 2048,
       thinking: { type: 'adaptive' },
       output_config: { effort: 'low' },
       system: systemPrompt(user),
@@ -69,7 +70,7 @@ async function runClaude(user, mcp, messages) {
     if (betaSupported) {
       try {
         // Sunucu tarafı fallback: güvenlik sınıflandırıcısı reddederse istek önerilen modelde yeniden çalışır
-        response = await getClient().beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
+        response = await getClient().beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, {signal});
       } catch (e) {
         // Kurumsal gateway/proxy beta parametrelerini desteklemiyorsa bir kez sade istekle dene
         if (!(e instanceof Anthropic.BadRequestError)) throw e;
@@ -77,7 +78,7 @@ async function runClaude(user, mcp, messages) {
         betaSupported = false;
       }
     }
-    response ??= await getClient().messages.create(base);
+    response ??= await getClient().messages.create(base,{signal});
 
     if (response.stop_reason === 'refusal') {
       return { reply: 'Bu isteği işleyemedim, farklı şekilde ifade edebilir misiniz?', actions, toolCalls };
@@ -91,12 +92,16 @@ async function runClaude(user, mcp, messages) {
       return { reply: reply || 'Tamam.', actions, toolCalls };
     }
 
-    const results = await Promise.all(uses.map(async (u) => {
-      const r = await callTool(mcp, u.name, u.input);
-      toolCalls.push({ name: u.name, input: u.input, ok: !r.isError });
-      if (r.uiAction) actions.push(r.uiAction);
-      return { type: 'tool_result', tool_use_id: u.id, content: r.text.slice(0, 30000), is_error: r.isError };
-    }));
+    const results = [];
+    for (const u of uses) {
+      signal.throwIfAborted();
+      const entry={name:u.name,input:u.input,ok:false,attempted:true};
+      toolCalls.push(entry);
+      const r=await callTool(mcp,u.name,u.input);
+      entry.ok=!r.isError;
+      if(r.uiAction)actions.push(r.uiAction);
+      results.push({type:'tool_result',tool_use_id:u.id,content:r.text.slice(0,30000),is_error:r.isError});
+    }
     convo.push({ role: 'user', content: results });
   }
   return { reply: 'İşlem çok uzun sürdü, isteği daraltabilir misiniz?', actions, toolCalls };
@@ -184,7 +189,7 @@ async function runFallback(user, mcp, messages) {
       const participation = /kurumsal/.test(q) ? 'corporate' : /bireysel/.test(q) ? 'individual' : undefined;
       const scope = /gecmis|katildigimiz|katilinan/.test(q) ? 'past' : 'upcoming';
       const list = await call('list_events', { scope, ...(type ? { type } : {}), ...(participation ? { participation } : {}) });
-      await go('events', { scope, ...(type ? { type } : {}) });
+      await go('events', { scope, view:'list', ...(type ? { type } : {}), ...(participation ? { participation } : {}) });
       return { reply: list.length ? `${list.length} etkinlik:\n${list.slice(0, 5).map((e) => `• ${e.title} — ${e.start_date} (${e.participation === 'corporate' ? 'kurumsal' : 'bireysel'}, ${e.participants.length} katılımcı)`).join('\n')}` : 'Etkinlik bulunamadı.', actions, toolCalls };
     }
     if (/duyuru/.test(q)) {
@@ -235,26 +240,35 @@ async function runFallback(user, mcp, messages) {
   };
 }
 
-export async function chat(user, token, messages) {
-  const mcp = await connectMcp(token);
+export async function chat(user, token, messages, requestId=randomUUID()) {
+  const fingerprint=createHash('sha256').update(JSON.stringify(messages)).digest('hex');
+  const existing=get('SELECT * FROM chat_requests WHERE user_id=? AND request_id=?',user.id,requestId);
+  if(existing) {
+    if(existing.fingerprint!==fingerprint)throw new HttpError(409,'Aynı istek kimliği farklı içerikle kullanılamaz');
+    if(existing.result)return JSON.parse(existing.result);
+    throw new HttpError(409,'Bu istek işlendi veya hâlen işleniyor. Tekrar göndermeden kayıtları kontrol edin.');
+  }
+  run("INSERT INTO chat_requests(user_id,request_id,fingerprint,status) VALUES (?,?,?,'processing')",user.id,requestId,fingerprint);
+  const trace={actions:[],toolCalls:[]};
+  const signal=AbortSignal.timeout(60000);
+  let mcp;
   try {
-    if (hasClaudeCreds() && process.env.CHAT_MODE !== 'rules') {
-      try {
-        return { mode: 'claude', model: MODEL, ...(await runClaude(user, mcp, messages)) };
-      } catch (e) {
-        if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
-          console.warn('[chat] Claude kimlik doğrulama hatası, kural tabanlı moda geçiliyor:', e.message);
-        } else if (e instanceof Anthropic.RateLimitError) {
-          console.warn('[chat] Claude rate limit, kural tabanlı moda geçiliyor');
-        } else if (e instanceof Anthropic.APIConnectionError) {
-          console.warn('[chat] Claude bağlantı hatası:', e.message);
-        } else if (e instanceof Anthropic.APIError) {
-          console.warn(`[chat] Claude API hatası ${e.status}:`, e.message);
-        } else throw e;
+    mcp=await connectMcp(token);
+    let result;
+    if(hasClaudeCreds()&&process.env.CHAT_MODE!=='rules') {
+      try { result={mode:'claude',model:MODEL,...await runClaude(user,mcp,messages,trace,signal)}; }
+      catch(e) {
+        const wrote=trace.toolCalls.some(t=>t.attempted&&!READ_ONLY.has(t.name));
+        if(wrote) result={mode:'claude',partial:true,reply:'İstek sırasında bağlantı kesildi. Bazı işlemler yapılmış olabilir; mükerrer kayıt oluşturmamak için işlemi tekrarlamadım. İlgili kayıtları kontrol edin.',...trace};
+        else if(e instanceof Anthropic.APIError||e instanceof Anthropic.APIConnectionError||signal.aborted) console.warn('[chat] Kural moduna geçiliyor:',e.name);
+        else throw e;
       }
     }
-    return { mode: 'rules', ...(await runFallback(user, mcp, messages)) };
-  } finally {
-    await mcp.close().catch(() => {});
-  }
+    result??={mode:'rules',...await runFallback(user,mcp,messages)};
+    run("UPDATE chat_requests SET status='completed',result=? WHERE user_id=? AND request_id=?",JSON.stringify(result),user.id,requestId);
+    return result;
+  } catch(e) {
+    run("UPDATE chat_requests SET status='failed' WHERE user_id=? AND request_id=?",user.id,requestId);
+    throw e;
+  } finally {if(mcp)await mcp.close().catch(()=>{});}
 }

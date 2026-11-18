@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, LayoutList, Columns3, X, Trash2, MessageSquare, Repeat, LifeBuoy, Filter } from 'lucide-react';
+import {RequestState} from '../components/RequestState.jsx';
 import { api } from '../api.js';
 import { useAuth, useLive, isManager } from '../auth.jsx';
 import {
@@ -20,7 +21,9 @@ export default function Tasks() {
     FILTER_KEYS.forEach((k) => params.get(k) && q.set(k, params.get(k)));
     return q.toString();
   }, [params]);
-  const { data: tasks } = useLive(`/tasks${query ? `?${query}` : ''}`, ['tasks']);
+  const page=Math.max(1,Math.min(1000000,Math.floor(Number(params.get('page')))||1));
+  const request=useLive(`/tasks?paged=true&limit=50&offset=${(page-1)*50}&${query}`,['tasks']);
+  const tasks=request.data?.items;
   const { data: users } = useLive('/users', ['users']);
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -29,6 +32,7 @@ export default function Tasks() {
     const p = new URLSearchParams(params);
     v ? p.set(k, v) : p.delete(k);
     p.delete('highlight');
+    if(k!=='page')p.delete('page');
     setParams(p);
   };
 
@@ -56,7 +60,7 @@ export default function Tasks() {
         <div className="flex flex-wrap items-center gap-2">
           <Filter size={15} className="text-slate-500" />
           <Input placeholder="Ara…" className="w-44" defaultValue={params.get('search') || ''} onKeyDown={(e) => e.key === 'Enter' && setParam('search', e.target.value)} />
-          <Select className="w-40" value={params.get('status') || ''} onChange={(e) => setParam('status', e.target.value)}
+          <Select aria-label="Görev durumu" className="w-40" value={params.get('status') || ''} onChange={(e) => setParam('status', e.target.value)}
             options={[['', 'Tüm durumlar'], ['open', 'Açık (tamamlanmamış)'], ...Object.entries(STATUS).map(([k, v]) => [k, v.label])]} />
           <Select className="w-36" value={params.get('priority') || ''} onChange={(e) => setParam('priority', e.target.value)}
             options={[['', 'Tüm öncelikler'], ...Object.entries(PRIORITY).map(([k, v]) => [k, v.label])]} />
@@ -69,10 +73,11 @@ export default function Tasks() {
           <label className="flex items-center gap-1.5 text-sm text-slate-300"><input type="checkbox" checked={params.get('mine') === 'true'} onChange={(e) => setParam('mine', e.target.checked ? 'true' : '')} /> Bana atananlar</label>
           <label className="flex items-center gap-1.5 text-sm text-slate-300"><input type="checkbox" checked={params.get('overdue') === 'true'} onChange={(e) => setParam('overdue', e.target.checked ? 'true' : '')} /> Gecikmiş</label>
           {activeFilters.length > 0 && <Button variant="ghost" onClick={() => setParams(view !== 'list' ? { view } : {})}><X size={14} /> Temizle</Button>}
-          <span className="ml-auto text-xs text-slate-500">{tasks?.length ?? 0} görev</span>
+          <span className="ml-auto text-xs text-slate-500">{request.data?.total ?? 0} görev</span>
         </div>
       </Card>
 
+      <RequestState {...request}/>
       {!tasks ? null : view === 'board' ? (
         <Board tasks={tasks} onOpen={setSelected} highlight={highlight} />
       ) : (
@@ -112,6 +117,7 @@ export default function Tasks() {
         </Card>
       )}
 
+      {request.data && request.data.total>50 && <div className="mt-4 flex items-center justify-center gap-4 text-sm"><Button variant="ghost" disabled={page===1} onClick={()=>setParam('page',String(page-1))}>Önceki</Button><span>Sayfa {page} / {Math.max(1,Math.ceil(request.data.total/50))}</span><Button variant="ghost" disabled={page*50>=request.data.total} onClick={()=>setParam('page',String(page+1))}>Sonraki</Button></div>}
       {selected && <TaskDrawer id={selected} users={assignable} onClose={() => { setSelected(null); if (highlight) setParam('highlight', ''); }} />}
       <TaskForm open={creating} users={assignable} onClose={() => setCreating(false)} />
     </div>
@@ -155,6 +161,7 @@ function TaskDrawer({ id, users, onClose }) {
   const [comment, setComment] = useState('');
   const patch = (body) => api(`/tasks/${id}`, { method: 'PATCH', body }).catch((e) => alert(e.message));
   const mgr = isManager(user);
+  const canEdit=mgr||t?.created_by===user.id;
   return (
     <div className="fixed inset-0 z-30 flex justify-end bg-black/40" onClick={onClose}>
       <div className="h-full w-full max-w-lg overflow-auto border-l border-slate-700 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -168,22 +175,22 @@ function TaskDrawer({ id, users, onClose }) {
         {error && <div className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
         {t && (
           <div className="space-y-5">
-            <p className="text-sm text-slate-300">{t.description || <i className="text-slate-500">Açıklama yok</i>}</p>
+            <TaskTextEditor key={t.id} task={t} canEdit={canEdit} />
             <div className="grid grid-cols-2 gap-3">
               <Field label="Durum">
                 <Select value={t.status} onChange={(e) => patch({ status: e.target.value })} options={Object.entries(STATUS).map(([k, v]) => [k, v.label])} />
               </Field>
               <Field label="Öncelik">
-                <Select disabled={!mgr} value={t.priority} onChange={(e) => patch({ priority: e.target.value })} options={Object.entries(PRIORITY).map(([k, v]) => [k, v.label])} />
+                <Select disabled={!canEdit} value={t.priority} onChange={(e) => patch({ priority: e.target.value })} options={Object.entries(PRIORITY).map(([k, v]) => [k, v.label])} />
               </Field>
               <Field label="Sorumlu">
-                <Select disabled={!mgr} value={t.assignee_id || ''} onChange={(e) => patch({ assignee: e.target.value })} options={users.map((u) => [u.id, u.name])} />
+                <Select disabled={!canEdit} value={t.assignee_id || ''} onChange={(e) => patch({ assignee: e.target.value })} options={users.map((u) => [u.id, u.name])} />
               </Field>
               <Field label="Yedek sorumlu">
-                <Select disabled={!mgr} value={t.backup_assignee_id || ''} onChange={(e) => patch({ backup_assignee: e.target.value })} options={[['', '— Yok —'], ...users.map((u) => [u.id, u.name])]} />
+                <Select disabled={!canEdit} value={t.backup_assignee_id || ''} onChange={(e) => patch({ backup_assignee: e.target.value })} options={[['', '— Yok —'], ...users.map((u) => [u.id, u.name])]} />
               </Field>
               <Field label="Bitiş tarihi">
-                <Input type="date" disabled={!mgr} value={t.due_date || ''} onChange={(e) => patch({ due_date: e.target.value })} />
+                <Input type="date" disabled={!canEdit} value={t.due_date || ''} onChange={(e) => patch({ due_date: e.target.value })} />
               </Field>
               <Field label="Tekrar">
                 <Input disabled value={{ none: 'Yok', daily: 'Her gün', weekly: 'Her hafta' }[t.recurrence]} />
@@ -193,7 +200,7 @@ function TaskDrawer({ id, users, onClose }) {
               <span>Oluşturan: {t.creator_name}</span><span>·</span><span>{fmtDateTime(t.created_at)}</span>
               {t.completed_at && <><span>·</span><span className="text-emerald-400">Tamamlandı {fmtDateTime(t.completed_at)}</span></>}
             </div>
-            {!mgr && <div className="rounded-lg border border-slate-800 p-2 text-xs text-slate-500">Çalışan yetkisiyle sadece durum güncelleyebilir ve yorum ekleyebilirsiniz.</div>}
+            {!canEdit && <div className="rounded-lg border border-slate-800 p-2 text-xs text-slate-500">Çalışan yetkisiyle sadece durum güncelleyebilir ve yorum ekleyebilirsiniz.</div>}
 
             <div>
               <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><MessageSquare size={15} />Yorumlar ({t.comments.length})</h3>
@@ -230,13 +237,15 @@ export function TaskForm({ open, onClose, users }) {
   const empty = { title: '', description: '', type: 'daily', category: user.team === 'Ofansif Güvenlik' ? 'Sızma Testi' : 'SOC', priority: 'medium', assignee: user.id, backup_assignee: '', due_date: new Date().toISOString().slice(0, 10), recurrence: 'none' };
   const [f, setF] = useState(empty);
   const [err, setErr] = useState('');
+  const [busy,setBusy]=useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const submit = async (e) => {
     e.preventDefault();
+    if(busy)return;setBusy(true);
     try {
       await api('/tasks', { method: 'POST', body: { ...f, backup_assignee: f.backup_assignee || undefined } });
       setF(empty); setErr(''); onClose();
-    } catch (e2) { setErr(e2.message); }
+    } catch (e2) { setErr(e2.message); } finally {setBusy(false);}
   };
   const options = isManager(user) ? users : users.filter((u) => u.id === user.id);
   return (
@@ -250,12 +259,23 @@ export function TaskForm({ open, onClose, users }) {
           <Field label="Sorumlu"><Select value={f.assignee} onChange={set('assignee')} options={options.map((u) => [u.id, u.name])} /></Field>
           <Field label="Yedek sorumlu"><Select value={f.backup_assignee} onChange={set('backup_assignee')} options={[['', '— Yok —'], ...options.map((u) => [u.id, u.name])]} /></Field>
           <Field label="Kategori"><Input value={f.category} onChange={set('category')} /></Field>
-          <Field label="Bitiş"><Input type="date" value={f.due_date} onChange={set('due_date')} /></Field>
+          <Field label="Bitiş"><Input required type="date" value={f.due_date} onChange={set('due_date')} /></Field>
           <Field label="Tekrar"><Select value={f.recurrence} onChange={set('recurrence')} options={[['none', 'Yok'], ['daily', 'Her gün'], ['weekly', 'Her hafta']]} /></Field>
         </div>
         {err && <div className="rounded-lg bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
-        <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="ghost" onClick={onClose}>İptal</Button><Button>Oluştur</Button></div>
+        <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="ghost" onClick={onClose}>İptal</Button><Button disabled={busy}>{busy?'Oluşturuluyor…':'Oluştur'}</Button></div>
       </form>
     </Modal>
   );
+}
+
+function TaskTextEditor({task,canEdit}) {
+  const [editing,setEditing]=useState(false),[title,setTitle]=useState(task.title),[description,setDescription]=useState(task.description||''),[recurrence,setRecurrence]=useState(task.recurrence),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  if(!canEdit||!editing)return <div><p className="whitespace-pre-wrap text-sm text-slate-300">{task.description||'Açıklama yok'}</p>{canEdit&&<Button variant="ghost" className="mt-2" onClick={()=>{setTitle(task.title);setDescription(task.description||'');setRecurrence(task.recurrence);setEditing(true);}}>Başlık ve açıklamayı düzenle</Button>}</div>;
+  return <form className="space-y-3" onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);try{await api('/tasks/'+task.id,{method:'PATCH',body:{title,description,recurrence}});setEditing(false);}catch(err){setError(err.message);}finally{setBusy(false);}}}>
+    <Field label="Başlık"><Input required maxLength={200} value={title} onChange={e=>setTitle(e.target.value)}/></Field>
+    <Field label="Açıklama"><Textarea maxLength={10000} rows={4} value={description} onChange={e=>setDescription(e.target.value)}/></Field>
+    <Field label="Tekrar"><Select value={recurrence} onChange={e=>setRecurrence(e.target.value)} options={[['none','Yok'],['daily','Her gün'],['weekly','Her hafta']]}/></Field>
+    {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}<div className="flex gap-2"><Button disabled={busy}>Kaydet</Button><Button type="button" variant="ghost" onClick={()=>setEditing(false)}>Vazgeç</Button></div>
+  </form>;
 }

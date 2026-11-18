@@ -10,7 +10,7 @@ import * as svc from './services.js';
 import { userFromToken, bearer } from './auth.js';
 
 export const UI_PAGES = {
-  dashboard: '/',
+  dashboard: '/dashboard',
   tasks: '/tasks',
   events: '/events',
   competencies: '/competencies',
@@ -67,7 +67,7 @@ export function createMcpServer(user) {
     assignee: z.string().optional().describe('Kişi adı veya id'),
     mine: z.boolean().optional().describe('Sadece bana atananlar'),
     overdue: z.boolean().optional(),
-    search: z.string().optional(),
+    search: z.string().optional(), limit:z.number().int().min(1).max(500).optional(), offset:z.number().int().min(0).optional(),
   }, (a) => svc.listTasks(user, a).map(slimTask), { readOnlyHint: true });
 
   tool('get_task', 'Tek bir görevin detayını ve yorumlarını getirir.', { id: z.number().int() }, ({ id }) => svc.getTask(user, id), { readOnlyHint: true });
@@ -92,7 +92,7 @@ export function createMcpServer(user) {
     backup_assignee: z.string().optional(),
     due_date: z.string().optional(),
     title: z.string().optional(),
-    description: z.string().optional(),
+    description: z.string().optional(), type:taskType.optional(), category:z.string().optional(), recurrence:z.enum(['none','daily','weekly']).optional(),
   }, ({ id, ...patch }) => slimTask(svc.updateTask(user, id, patch)));
 
   tool('add_task_comment', 'Göreve yorum ekler (ilgili kişilere bildirim gider).', { id: z.number().int(), body: z.string() },
@@ -144,13 +144,19 @@ export function createMcpServer(user) {
     team: z.string().optional(),
   }, (a) => {
     const r = svc.reportSummary(user, a);
-    return { scope: r.scope, totals: r.totals, by_status: r.by_status, by_priority: r.by_priority, teams: r.teams, per_user: r.per_user, overdue_tasks: r.overdue_tasks, expiring_certs: r.expiring_certs };
+    return { scope: r.scope, totals: r.totals, by_status: r.by_status, by_priority: r.by_priority, teams: r.teams, per_user: r.per_user, overdue_tasks: r.overdue_tasks, expiring_certs: r.expiring_certs, trend:r.trend, event_stats:r.event_stats };
   }, { readOnlyHint: true });
 
-  tool('send_digest_notifications', 'Ekipteki herkese açık/gecikmiş görev özetini bildirim olarak gönderir (yönetici+).', {}, () => svc.sendDigest(user));
+  tool('send_digest_notifications', 'Seçili ekipteki açık/gecikmiş görev özetini bildirir (yönetici+).', {team:z.string().optional()}, a => svc.sendDigest(user,a));
 
   tool('list_notifications', 'Kullanıcının bildirimlerini listeler.', { unread: z.boolean().optional() }, (a) =>
     svc.listNotifications(user, a).slice(0, 15), { readOnlyHint: true });
+
+  tool('update_event','Etkinlik bilgilerini düzenler veya iptal eder (yönetici+).',{id:z.number().int(),title:z.string().optional(),start_date:z.string().optional(),end_date:z.string().optional(),description:z.string().optional(),location:z.string().optional(),status:z.enum(['scheduled','cancelled']).optional()},({id,...patch})=>svc.updateEvent(user,id,patch));
+  tool('update_attendance','Kayıtlı katılımcının gerçekleşen katılımını günceller (yönetici+).',{event_id:z.number().int(),user_id:z.number().int(),status:z.enum(['registered','attended'])},a=>svc.updateAttendance(user,a.event_id,a.user_id,{status:a.status}));
+  tool('update_certification','Sertifika bilgilerini düzenler.',{id:z.number().int(),name:z.string().optional(),issuer:z.string().optional(),obtained_at:z.string().optional(),expires_at:z.string().optional()},({id,...patch})=>svc.updateCertification(user,id,patch));
+  tool('delete_certification','Sertifikayı siler.',{id:z.number().int()},({id})=>svc.deleteCertification(user,id),{destructiveHint:true});
+  tool('delete_skill','Yetkinliği siler.',{id:z.number().int()},({id})=>svc.deleteSkill(user,id),{destructiveHint:true});
 
   // ---------- Önyüz yönlendirme
   tool('ui_navigate',
@@ -161,7 +167,7 @@ export function createMcpServer(user) {
       filters: z.object({
         status: z.string().optional(), priority: z.string().optional(), type: z.string().optional(),
         assignee: z.string().optional(), overdue: z.boolean().optional(), mine: z.boolean().optional(),
-        search: z.string().optional(), scope: z.string().optional(), view: z.enum(['list', 'board']).optional(),
+        search: z.string().optional(), scope: z.string().optional(), view: z.enum(['list', 'board', 'calendar']).optional(), participation: z.enum(['individual','corporate']).optional(),
       }).optional(),
       highlight_id: z.number().int().optional().describe('Vurgulanacak/açılacak kayıt id (görev veya etkinlik)'),
     },

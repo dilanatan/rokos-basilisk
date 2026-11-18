@@ -1,15 +1,17 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(here, '..', 'data');
-mkdirSync(dataDir, { recursive: true });
+
 
 export const DB_PATH = process.env.DB_PATH || path.join(dataDir, 'cyberops.db');
+if (DB_PATH !== ':memory:') mkdirSync(path.dirname(DB_PATH), { recursive: true });
 export const db = new DatabaseSync(DB_PATH);
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
 
 export function migrate() {
   db.exec(`
@@ -99,10 +101,58 @@ export function migrate() {
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `);
+  applyMigrations();
+}
+
+function applyMigrations() {
+  db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+  const migrations = [
+    [1, 'Operational integrity', () => {
+      db.exec(`
+        ALTER TABLE tasks ADD COLUMN recurrence_parent_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL;
+        CREATE UNIQUE INDEX task_recurrence_parent ON tasks(recurrence_parent_id) WHERE recurrence_parent_id IS NOT NULL;
+        ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','cancelled'));
+        CREATE INDEX tasks_assignee_status ON tasks(assignee_id,status,due_date);
+        CREATE INDEX tasks_backup ON tasks(backup_assignee_id);
+        CREATE INDEX notifications_user_read ON notifications(user_id,is_read,id);
+        CREATE TABLE audit_log (id INTEGER PRIMARY KEY, actor_id INTEGER REFERENCES users(id), action TEXT NOT NULL, details TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE auth_tokens (jti TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, expires_at INTEGER NOT NULL, revoked_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE chat_requests (user_id INTEGER NOT NULL REFERENCES users(id), request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, status TEXT NOT NULL, result TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,request_id));
+      `);
+    }],
+  ];
+  for (const [version, name, apply] of migrations) {
+    if (get('SELECT 1 FROM schema_migrations WHERE version=?', version)) continue;
+    transaction(() => { apply(); run('INSERT INTO schema_migrations (version,name) VALUES (?,?)', version, name); });
+  }
+}
+
+let commitCallbacks = null;
+export function afterCommit(fn) {
+  if (commitCallbacks) commitCallbacks.push(fn); else fn();
+}
+export function transaction(fn) {
+  if (commitCallbacks) return fn();
+  db.exec('BEGIN IMMEDIATE');
+  commitCallbacks = [];
+  let result, callbacks;
+  try {
+    result = fn();
+    db.exec('COMMIT');
+    callbacks = commitCallbacks;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  } finally {
+    commitCallbacks = null;
+  }
+  for (const callback of callbacks) { try { callback(); } catch (e) { console.error('[event delivery]', e.message); } }
+  return result;
 }
 
 export function resetDb() {
   db.exec(`
+    DROP TABLE IF EXISTS chat_requests; DROP TABLE IF EXISTS auth_tokens; DROP TABLE IF EXISTS audit_log; DROP TABLE IF EXISTS schema_migrations;
     DROP TABLE IF EXISTS notifications; DROP TABLE IF EXISTS announcements;
     DROP TABLE IF EXISTS certifications; DROP TABLE IF EXISTS skills;
     DROP TABLE IF EXISTS event_participants; DROP TABLE IF EXISTS events;

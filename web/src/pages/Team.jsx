@@ -1,6 +1,7 @@
+import {RequestState} from '../components/RequestState.jsx';
 import { api } from '../api.js';
 import { useAuth, useLive, ROLE_LABEL } from '../auth.jsx';
-import { Card, PageHeader, Avatar, Select, Badge, cx } from '../components/ui.jsx';
+import { Card, PageHeader, Avatar, Select, Badge, cx, fmtDateTime, Button } from '../components/ui.jsx';
 
 const MATRIX = [
   ['Kendi görevlerini görme / durum güncelleme', true, true, true],
@@ -15,7 +16,8 @@ const MATRIX = [
 
 export default function Team() {
   const { user } = useAuth();
-  const { data: users } = useLive('/users', ['users']);
+  const request=useLive('/users',['users']);
+  const {data:users}=request;
   const managers = users?.filter((u) => u.role !== 'employee') || [];
   const change = (u, body) => api(`/users/${u.id}`, { method: 'PATCH', body }).catch((e) => alert(e.message));
   return (
@@ -37,6 +39,7 @@ export default function Team() {
         </table>
         <div className="mt-2 text-xs text-slate-500">Aynı kurallar REST API, MCP tool ve chatbot katmanlarında da uygulanır (tek servis katmanı).</div>
       </Card>
+      <RequestState {...request}/>
       <Card title="Organizasyon">
         <table className="w-full text-sm">
           <thead className="text-left text-xs text-slate-500"><tr><th className="py-2">Kişi</th><th>Ekip</th><th>Rol</th><th>Yönetici</th></tr></thead>
@@ -54,7 +57,7 @@ export default function Team() {
                 </td>
                 <td>
                   {user.role === 'director' && u.role !== 'director'
-                    ? <Select className="w-40" value={u.manager_id || ''} onChange={(e) => change(u, { manager_id: Number(e.target.value) })} options={managers.filter((m) => m.id !== u.id).map((m) => [m.id, m.name])} />
+                    ? <Select className="w-40" value={u.manager_id || ''} onChange={(e) => change(u, { manager_id: e.target.value?Number(e.target.value):null })} options={[['','Yönetici yok'],...managers.filter((m) => m.id !== u.id).map((m) => [m.id, m.name])]} />
                     : <span className="text-slate-400">{u.manager_name || '—'}</span>}
                 </td>
               </tr>
@@ -62,6 +65,13 @@ export default function Team() {
           </tbody>
         </table>
       </Card>
+      {user.role==='director'&&<AuditLog/>}
     </div>
   );
+}
+
+function AuditLog() {
+  const request=useLive('/audit',['tasks','users','events','competencies','announcements']);
+  const labels={createTask:'Görev oluşturdu',updateTask:'Görevi güncelledi',deleteTask:'Görevi sildi',addComment:'Yorum ekledi',updateUserRole:'Yetkiyi güncelledi',createEvent:'Etkinlik oluşturdu',updateEvent:'Etkinliği güncelledi',joinEvent:'Etkinliğe kayıt yaptı',leaveEvent:'Katılımı iptal etti',updateAttendance:'Katılım durumunu güncelledi',upsertSkill:'Yetkinlik kaydetti',deleteSkill:'Yetkinlik sildi',addCertification:'Sertifika ekledi',updateCertification:'Sertifikayı güncelledi',deleteCertification:'Sertifika sildi',createAnnouncement:'Duyuru yayınladı',sendDigest:'Toplu bildirim gönderdi',markNotificationsRead:'Bildirimleri okundu işaretledi'};
+  return <Card title="İşlem geçmişi · son 100 işlem" className="mt-4" action={<Button variant="ghost" onClick={request.reload}>Yenile</Button>}><RequestState {...request}/><div className="max-h-80 overflow-auto">{request.data?.map(item=><div key={item.id} className="flex flex-wrap justify-between gap-2 border-b border-slate-800 py-2 text-xs"><span><b>{item.actor_name}</b> · {labels[item.action]||'Kayıt güncellendi'}{JSON.parse(item.details).record_id?' · #'+JSON.parse(item.details).record_id:''}</span><span className="text-slate-500">{fmtDateTime(item.created_at)}</span></div>)}</div></Card>;
 }

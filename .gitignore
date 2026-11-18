@@ -430,3 +430,8 @@ server/data/
 *.db
 *.db-*
 web/dist/
+
+# Local test output
+playwright-report/
+test-results/
+*.codex-stage.tmp

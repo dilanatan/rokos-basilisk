@@ -1,3 +1,5 @@
+import {RequestState} from '../components/RequestState.jsx';
+import {dateKey} from '../lib/calendar.js';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, BadgeCheck, AlertTriangle, CalendarDays } from 'lucide-react';
@@ -10,11 +12,16 @@ const LEVEL_TONE = ['', 'bg-slate-600', 'bg-sky-600', 'bg-cyan-500', 'bg-emerald
 export default function Competencies() {
   const { user } = useAuth();
   const [params] = useSearchParams();
-  const { data } = useLive('/competencies', ['competencies', 'events']);
+  const request=useLive('/competencies',['competencies','events']);
+  const {data}=request;
+  const [editingCert,setEditingCert]=useState(null);
+  const [error,setError]=useState('');
+  const remove=async(kind,id)=>{if(!confirm('Bu kayıt silinsin mi?'))return;setError('');try{await api('/competencies/'+kind+'/'+id,{method:'DELETE'});request.reload();}catch(e){setError(e.message);}};
+  const editCert=cert=>{setEditingCert(cert);setModal('cert');};
   const [modal, setModal] = useState(null); // 'skill' | 'cert'
   const [mode, setMode] = useState(isManager(user) ? 'matrix' : 'cards');
   const search = (params.get('search') || '').toLocaleLowerCase('tr');
-  if (!data) return null;
+  if(request.error||!data)return <RequestState {...request}/>;
   const people = search ? data.filter((p) => p.name.toLocaleLowerCase('tr').includes(search.split(' ')[0])) : data;
   const allSkills = [...new Set(data.flatMap((p) => p.skills.map((s) => s.name)))].sort();
   const expiring = data.flatMap((p) => p.certifications.filter((c) => c.expiring).map((c) => ({ ...c, person: p.name })));
@@ -32,6 +39,7 @@ export default function Competencies() {
         <Button onClick={() => setModal('skill')}><Plus size={16} /> Yetkinlik ekle</Button>
       </PageHeader>
 
+      {error&&<RequestState error={error} reload={()=>setError('')}/>}
       {expiring.length > 0 && (
         <Card className="mb-4 border-amber-500/30 p-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-amber-300">
@@ -61,7 +69,7 @@ export default function Competencies() {
                     const lvl = p.skills.find((x) => x.name === s)?.level;
                     return <td key={s} className="px-1 text-center">{lvl ? <span className={cx('inline-flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-slate-950', LEVEL_TONE[lvl])}>{lvl}</span> : <span className="text-slate-700">·</span>}</td>;
                   })}
-                  <td className="px-3 text-xs text-slate-400">{p.certifications.map((c) => c.name).join(', ')}</td>
+                  <td className="px-3 text-xs text-slate-400"><CertificateActions certificates={p.certifications} onEdit={editCert} onDelete={id=>remove('certifications',id)}/></td>
                 </tr>
               ))}
             </tbody>
@@ -76,14 +84,14 @@ export default function Competencies() {
               <div className="space-y-2">
                 {p.skills.map((s) => (
                   <div key={s.id}>
-                    <div className="flex justify-between text-xs"><span>{s.name} <span className="text-slate-500">· {s.category}</span></span><span className="text-slate-400">{s.level}/5</span></div>
+                    <div className="flex justify-between text-xs"><span>{s.name} <span className="text-slate-500">· {s.category}</span></span><span className="text-slate-400">{s.level}/5 <button aria-label={s.name+' yetkinliğini sil'} onClick={()=>remove('skills',s.id)} className="ml-2 text-red-300 hover:underline">Sil</button></span></div>
                     <div className="mt-1 h-1.5 rounded bg-slate-800"><div className="h-1.5 rounded bg-gradient-to-r from-cyan-500 to-emerald-400" style={{ width: `${s.level * 20}%` }} /></div>
                   </div>
                 ))}
               </div>
               {p.certifications.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {p.certifications.map((c) => <Badge key={c.id} className={c.expiring ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/10 text-emerald-300'}><BadgeCheck size={11} />{c.name}</Badge>)}
+                  <CertificateActions certificates={p.certifications} onEdit={editCert} onDelete={id=>remove('certifications',id)}/>
                 </div>
               )}
               {p.events.length > 0 && (
@@ -97,7 +105,7 @@ export default function Competencies() {
         </div>
       )}
       <SkillModal open={modal === 'skill'} people={data} onClose={() => setModal(null)} />
-      <CertModal open={modal === 'cert'} people={data} onClose={() => setModal(null)} />
+      {modal==='cert'&&<CertModal initial={editingCert} people={data} onClose={()=>{setModal(null);setEditingCert(null);}} onSaved={request.reload}/>}
     </div>
   );
 }
@@ -124,18 +132,24 @@ function SkillModal({ open, onClose, people }) {
   );
 }
 
-function CertModal({ open, onClose, people }) {
-  const { user } = useAuth();
-  const [f, setF] = useState({ name: '', issuer: '', expires_at: '', user: user.id });
-  return (
-    <Modal open={open} onClose={onClose} title="Sertifika ekle">
-      <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); try { await api('/competencies/certifications', { method: 'POST', body: f }); onClose(); } catch (err) { alert(err.message); } }}>
-        <PersonSelect people={people} value={f.user} onChange={(e) => setF({ ...f, user: e.target.value })} />
-        <Field label="Sertifika"><Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="ör. OSCP" /></Field>
-        <Field label="Veren kurum"><Input value={f.issuer} onChange={(e) => setF({ ...f, issuer: e.target.value })} /></Field>
-        <Field label="Geçerlilik bitişi"><Input type="date" value={f.expires_at} onChange={(e) => setF({ ...f, expires_at: e.target.value })} /></Field>
-        <div className="flex justify-end"><Button>Kaydet</Button></div>
-      </form>
-    </Modal>
-  );
+
+function CertificateActions({certificates,onEdit,onDelete}) {
+  return <div className="space-y-1">{certificates.map(cert=><div key={cert.id} className="flex flex-wrap items-center gap-2"><Badge className={cert.expiring?'bg-amber-500/15 text-amber-300':'bg-emerald-500/10 text-emerald-300'}><BadgeCheck size={11}/>{cert.name}</Badge><button onClick={()=>onEdit(cert)} className="text-xs text-cyan-300 hover:underline">Düzenle</button><button onClick={()=>onDelete(cert.id)} className="text-xs text-red-300 hover:underline">Sil</button></div>)}</div>;
+}
+function CertModal({initial,people,onClose,onSaved}) {
+  const {user}=useAuth();
+  const [f,setF]=useState({name:initial?.name||'',issuer:initial?.issuer||'',obtained_at:initial?.obtained_at||dateKey(new Date()),expires_at:initial?.expires_at||'',user:initial?.user_id||user.id});
+  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  const set=key=>e=>setF({...f,[key]:e.target.value});
+  return <Modal open onClose={onClose} title={initial?'Sertifikayı düzenle':'Sertifika ekle'}><form className="space-y-3" onSubmit={async e=>{
+    e.preventDefault();if(busy)return;setBusy(true);setError('');
+    try{const {user:target,...fields}=f;await api('/competencies/certifications'+(initial?'/'+initial.id:''),{method:initial?'PATCH':'POST',body:initial?fields:{...fields,user:target}});onSaved();onClose();}catch(err){setError(err.message);}finally{setBusy(false);}
+  }}>
+    {!initial&&<PersonSelect people={people} value={f.user} onChange={set('user')}/>}
+    <Field label="Sertifika"><Input required maxLength={200} value={f.name} onChange={set('name')}/></Field>
+    <Field label="Veren kurum"><Input maxLength={200} value={f.issuer} onChange={set('issuer')}/></Field>
+    <Field label="Alınma tarihi"><Input required type="date" value={f.obtained_at} onChange={set('obtained_at')}/></Field>
+    <Field label="Geçerlilik bitişi"><Input type="date" min={f.obtained_at} value={f.expires_at} onChange={set('expires_at')}/></Field>
+    {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}<div className="flex justify-end"><Button disabled={busy}>{busy?'Kaydediliyor…':'Kaydet'}</Button></div>
+  </form></Modal>;
 }

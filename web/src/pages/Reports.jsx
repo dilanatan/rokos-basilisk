@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, Send, ListChecks, AlertTriangle, Flame, CheckCircle2, Percent } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line, CartesianGrid } from 'recharts';
+import {RequestState} from '../components/RequestState.jsx';
 import { api, download } from '../api.js';
 import { useAuth, useLive } from '../auth.jsx';
 import { Card, Button, Stat, PageHeader, PriorityBadge, Select, STATUS, PRIORITY, TYPE, fmtDate } from '../components/ui.jsx';
@@ -13,16 +14,18 @@ const tip = { contentStyle: { background: '#0f172a', border: '1px solid #334155'
 export default function Reports() {
   const { user } = useAuth();
   const [team, setTeam] = useState('');
-  const { data: r } = useLive(`/reports/summary${team ? `?team=${encodeURIComponent(team)}` : ''}`, ['tasks']);
+  const request = useLive(`/reports/summary${team ? `?team=${encodeURIComponent(team)}` : ''}`, ['tasks','events','competencies','users']);
+  const {data:r}=request;
+  const {data:users}=useLive('/users',['users']);
   const [msg, setMsg] = useState('');
-  if (!r) return null;
+  if(request.error||!r)return <RequestState {...request}/>;
 
   const statusData = Object.entries(r.by_status).map(([k, v]) => ({ name: STATUS[k].label, value: v, key: k }));
   const prioData = ['critical', 'high', 'medium', 'low'].map((k) => ({ name: PRIORITY[k].label, value: r.by_priority[k] || 0, key: k }));
   const typeData = Object.entries(r.by_type).map(([k, v]) => ({ name: TYPE[k], value: v }));
 
   const digest = async () => {
-    const res = await api('/reports/digest', { method: 'POST' });
+    const res = await api('/reports/digest', { method: 'POST',body:{team} });
     setMsg(`✓ ${res.sent} kişiye görev özeti bildirimi gönderildi.`);
     setTimeout(() => setMsg(''), 5000);
   };
@@ -31,9 +34,9 @@ export default function Reports() {
     <div className="mx-auto max-w-7xl">
       <PageHeader title="Raporlama & Bildirim" subtitle={`Kapsam: ${r.scope} · ${new Date(r.generated_at).toLocaleString('tr-TR')}`}>
         {user.role === 'director' && (
-          <Select className="w-48" value={team} onChange={(e) => setTeam(e.target.value)} options={[['', 'Tüm organizasyon'], ['SOC', 'SOC'], ['Ofansif', 'Ofansif Güvenlik']]} />
+          <Select aria-label="Rapor ekibi" className="w-48" value={team} onChange={(e) => setTeam(e.target.value)} options={[['', 'Tüm organizasyon'], ...[...new Set((users||[]).map(u=>u.team))].map(team=>[team,team])]} />
         )}
-        <Button variant="ghost" onClick={() => download('/reports/tasks.csv', `gorev-raporu-${new Date().toISOString().slice(0, 10)}.csv`)}><Download size={16} /> CSV / Excel</Button>
+        <Button variant="ghost" onClick={() => download('/reports/tasks.csv'+(team?'?team='+encodeURIComponent(team):''), `gorev-raporu-${new Date().toISOString().slice(0, 10)}.csv`)}><Download size={16} /> CSV / Excel</Button>
         <Button onClick={digest}><Send size={16} /> Toplu bildirim gönder</Button>
       </PageHeader>
       {msg && <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{msg}</div>}

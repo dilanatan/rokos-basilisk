@@ -2,9 +2,12 @@
  * İş mantığı katmanı. REST API ve MCP server aynı fonksiyonları kullanır;
  * rol bazlı yetki kontrolleri burada yapılır.
  */
-import { all, get, run, db } from './db.js';
+import { all, get, run, db, transaction } from './db.js';
 import { HttpError, requireRole, ROLE_RANK } from './auth.js';
-import { notify, broadcastChange } from './notify.js';
+import { notify, broadcastChange, notificationsChanged } from './notify.js';
+
+import { parse, taskSchema, taskPatchSchema, taskFilterSchema, eventSchema, skillSchema, certSchema, announcementSchema, roleSchema, commentSchema, checkDates } from './validation.js';
+import { z } from 'zod';
 
 export const STATUS_LABEL = { todo: 'Yapılacak', in_progress: 'Devam ediyor', review: 'İncelemede', done: 'Tamamlandı' };
 export const PRIORITY_LABEL = { low: 'Düşük', medium: 'Orta', high: 'Yüksek', critical: 'Kritik' };
@@ -57,14 +60,28 @@ export function listUsers(user) {
   ).map((u) => ({ ...u, visible: visibleUserIds(user).includes(u.id) }));
 }
 
-export function updateUserRole(user, id, { role, manager_id }) {
+function _updateUserRole(user, id, patch) {
   requireRole(user, 'director');
+  const {role, manager_id} = parse(roleSchema, patch);
   const target = mustResolve(id);
-  if (role && !ROLE_RANK[role]) throw new HttpError(400, 'Geçersiz rol');
-  run('UPDATE users SET role = COALESCE(?, role), manager_id = COALESCE(?, manager_id) WHERE id = ?', role ?? null, manager_id ?? null, target.id);
-  notify(target.id, { type: 'role', title: 'Yetkiniz güncellendi', body: `Yeni rolünüz: ${role}`, link: '/' });
+  if (role && role !== 'director' && target.role === 'director' && get("SELECT COUNT(*) AS n FROM users WHERE role='director'").n <= 1) throw new HttpError(400, 'Son direktörün rolü değiştirilemez');
+  if (role === 'employee' && get('SELECT 1 FROM users WHERE manager_id=?', target.id)) throw new HttpError(400, 'Önce bağlı çalışanlara yeni yönetici atayın');
+  if (manager_id !== undefined && manager_id !== null) {
+    const manager = mustResolve(manager_id);
+    if (manager.role === 'employee') throw new HttpError(400, 'Seçilen kişi yönetici olmalı');
+    const seen = new Set([target.id]);
+    let cursor = manager;
+    while (cursor) {
+      if (seen.has(cursor.id)) throw new HttpError(400, 'Yönetici ilişkisi döngü oluşturamaz');
+      seen.add(cursor.id);
+      cursor = cursor.manager_id ? get('SELECT * FROM users WHERE id=?', cursor.manager_id) : null;
+    }
+  }
+  const updatedRole = role ?? target.role;
+  run('UPDATE users SET role=?,manager_id=? WHERE id=?', updatedRole, manager_id === undefined ? target.manager_id : manager_id, target.id);
+  notify(target.id, {type:'role',title:'Yetkiniz güncellendi',body:'Rol veya yönetici bilginiz güncellendi.',link:'/'});
   broadcastChange('users');
-  return get('SELECT * FROM users WHERE id = ?', target.id);
+  return get('SELECT * FROM users WHERE id=?',target.id);
 }
 
 // ---------------------------------------------------------------- Görevler
@@ -76,26 +93,30 @@ const TASK_SELECT = `
   LEFT JOIN users b ON b.id = t.backup_assignee_id
   LEFT JOIN users c ON c.id = t.created_by`;
 
-export function listTasks(user, f = {}) {
+function taskQuery(user, input = {}) {
+  const f = parse(taskFilterSchema, input);
   const ids = visibleUserIds(user);
-  const where = [`(t.assignee_id IN ${inList(ids)} OR t.backup_assignee_id IN ${inList(ids)} OR t.created_by = ${Number(user.id)})`];
-  const p = [];
+  const where = [`(t.assignee_id IN ${inList(ids)} OR t.backup_assignee_id IN ${inList(ids)} OR t.created_by = ?)`];
+  const p = [user.id];
   if (f.status === 'open') where.push("t.status != 'done'");
-  else if (f.status) { where.push('t.status = ?'); p.push(f.status); }
-  if (f.priority) { where.push('t.priority = ?'); p.push(f.priority); }
-  if (f.type) { where.push('t.type = ?'); p.push(f.type); }
-  if (f.category) { where.push('t.category LIKE ?'); p.push(`%${f.category}%`); }
-  if (f.assignee) {
-    const a = mustResolve(f.assignee);
-    where.push('(t.assignee_id = ? OR t.backup_assignee_id = ?)'); p.push(a.id, a.id);
-  }
-  if (f.mine === true || f.mine === 'true') { where.push('(t.assignee_id = ? OR t.backup_assignee_id = ?)'); p.push(user.id, user.id); }
-  if (f.overdue === true || f.overdue === 'true') where.push("t.status != 'done' AND t.due_date < date('now')");
-  if (f.due === 'today') where.push("t.due_date = date('now')");
-  if (f.search) { where.push('(t.title LIKE ? OR t.description LIKE ?)'); p.push(`%${f.search}%`, `%${f.search}%`); }
-  const order = `ORDER BY CASE t.status WHEN 'done' THEN 1 ELSE 0 END,
-    CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, t.due_date`;
-  return all(`${TASK_SELECT} WHERE ${where.join(' AND ')} ${order} LIMIT ${Number(f.limit) || 500}`, ...p);
+  else if (f.status) {where.push('t.status=?');p.push(f.status);}
+  for (const key of ['priority','type']) if (f[key]) {where.push(`t.${key}=?`);p.push(f[key]);}
+  if (f.category) {where.push('t.category LIKE ?');p.push('%'+f.category+'%');}
+  if (f.assignee) {const a=mustResolve(f.assignee);where.push('(t.assignee_id=? OR t.backup_assignee_id=?)');p.push(a.id,a.id);}
+  if (f.mine) {where.push('(t.assignee_id=? OR t.backup_assignee_id=?)');p.push(user.id,user.id);}
+  if (f.overdue) where.push("t.status!='done' AND t.due_date<date('now')");
+  if (f.due==='today') where.push("t.due_date=date('now')");
+  if (f.search) {where.push('(t.title LIKE ? OR t.description LIKE ?)');p.push('%'+f.search+'%','%'+f.search+'%');}
+  return {f,where:where.join(' AND '),p};
+}
+export function listTasks(user, input = {}) {
+  const {f,where,p}=taskQuery(user,input);
+  return all(`${TASK_SELECT} WHERE ${where} ORDER BY CASE t.status WHEN 'done' THEN 1 ELSE 0 END,
+    CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,t.due_date,t.id LIMIT ? OFFSET ?`,...p,f.limit||500,f.offset||0);
+}
+export function listTasksPage(user,input={}) {
+  const {where,p,f}=taskQuery(user,input);
+  return {items:listTasks(user,f),total:get(`SELECT COUNT(*) AS n FROM tasks t WHERE ${where}`,...p).n,limit:f.limit||500,offset:f.offset||0};
 }
 
 export function getTask(user, id) {
@@ -112,7 +133,8 @@ export function getTask(user, id) {
   return t;
 }
 
-export function createTask(user, d) {
+function _createTask(user, d) {
+  d = parse(taskSchema, d);
   if (!d.title?.trim()) throw new HttpError(400, 'Görev başlığı zorunlu');
   const assignee = d.assignee ? mustResolve(d.assignee, 'Atanan kişi') : user;
   assertCanAssign(user, assignee);
@@ -124,6 +146,7 @@ export function createTask(user, d) {
     d.title.trim(), d.description || '', d.type || 'daily', d.category || 'SOC', d.priority || 'medium', d.status || 'todo',
     assignee.id, backup?.id ?? null, user.id, d.due_date || today(), d.recurrence || 'none',
   );
+  if (d.status === 'done') run("UPDATE tasks SET completed_at=datetime('now') WHERE id=?", id);
   const link = `/tasks?highlight=${id}`;
   if (assignee.id !== user.id) {
     notify(assignee.id, { type: 'task_assigned', title: `${user.name} size görev atadı`, body: `[${PRIORITY_LABEL[d.priority || 'medium']}] ${d.title}`, link });
@@ -135,7 +158,8 @@ export function createTask(user, d) {
   return getTask(user, id);
 }
 
-export function updateTask(user, id, patch) {
+function _updateTask(user, id, patch) {
+  patch = parse(taskPatchSchema, patch);
   const t = getTask(user, id);
   const isOwner = [t.assignee_id, t.backup_assignee_id].includes(user.id);
   const isManager = ROLE_RANK[user.role] >= ROLE_RANK.manager;
@@ -188,20 +212,23 @@ export function updateTask(user, id, patch) {
       notify(uid, { type: patch.status === 'review' ? 'task_review' : 'task_status', title: `Görev durumu: ${STATUS_LABEL[patch.status]}`, body: `${t.title} — ${user.name}`, link });
     }
     // Tekrarlayan görev tamamlandıysa bir sonrakini oluştur
-    if (patch.status === 'done' && t.recurrence !== 'none') {
-      run(
-        `INSERT INTO tasks (title,description,type,category,priority,status,assignee_id,backup_assignee_id,created_by,due_date,recurrence)
-         VALUES (?,?,?,?,?,'todo',?,?,?,?,?)`,
-        t.title, t.description, t.type, t.category, t.priority, t.assignee_id, t.backup_assignee_id, t.created_by,
-        addDays(t.due_date, t.recurrence === 'weekly' ? 7 : 1), t.recurrence,
-      );
+    const current = get('SELECT * FROM tasks WHERE id=?', t.id);
+    if (patch.status === 'done' && current.recurrence !== 'none') {
+      const nextDate = addDays(current.due_date, current.recurrence === 'weekly' ? 7 : 1);
+      const next = run(
+        `INSERT INTO tasks (title,description,type,category,priority,status,assignee_id,backup_assignee_id,created_by,due_date,recurrence,recurrence_parent_id)
+         VALUES (?,?,?,?,?,'todo',?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
+        current.title,current.description,current.type,current.category,current.priority,current.assignee_id,current.backup_assignee_id,current.created_by,nextDate,current.recurrence,current.id);
+      if (next.changes) for (const uid of new Set([current.assignee_id,current.backup_assignee_id])) {
+        if (uid) notify(uid,{type:'task_assigned',title:'Tekrarlayan görev hazır',body:current.title,link:`/tasks?highlight=${next.lastInsertRowid}`});
+      }
     }
   }
   broadcastChange('tasks');
   return getTask(user, t.id);
 }
 
-export function deleteTask(user, id) {
+function _deleteTask(user, id) {
   requireRole(user, 'manager');
   const t = getTask(user, id);
   run('DELETE FROM tasks WHERE id = ?', t.id);
@@ -209,7 +236,8 @@ export function deleteTask(user, id) {
   return { deleted: t.id, title: t.title };
 }
 
-export function addComment(user, id, body) {
+function _addComment(user, id, body) {
+  body = parse(commentSchema, body);
   const t = getTask(user, id);
   if (!body?.trim()) throw new HttpError(400, 'Yorum boş olamaz');
   run('INSERT INTO task_comments (task_id,user_id,body) VALUES (?,?,?)', t.id, user.id, body.trim());
@@ -222,23 +250,19 @@ export function addComment(user, id, body) {
 
 // ---------------------------------------------------------------- Etkinlikler
 export function listEvents(user, f = {}) {
-  const where = [];
-  if (f.scope === 'upcoming') where.push("COALESCE(e.end_date, e.start_date) >= date('now')");
-  if (f.scope === 'past') where.push("COALESCE(e.end_date, e.start_date) < date('now')");
-  if (f.type) where.push(`e.type = '${String(f.type).replace(/'/g, '')}'`);
-  if (f.participation) where.push(`e.participation = '${String(f.participation).replace(/'/g, '')}'`);
-  const events = all(
-    `SELECT e.*, u.name AS creator_name FROM events e LEFT JOIN users u ON u.id = e.created_by
-     ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY e.start_date ${f.scope === 'past' ? 'DESC' : 'ASC'}`,
-  );
-  const parts = all('SELECT p.*, u.name, u.team FROM event_participants p JOIN users u ON u.id = p.user_id');
-  return events.map((e) => {
-    const participants = parts.filter((p) => p.event_id === e.id);
-    return { ...e, participants, joined: participants.some((p) => p.user_id === user.id) };
-  });
+  const where=[],p=[];
+  if (f.scope==='upcoming') where.push("COALESCE(e.end_date,e.start_date)>=date('now')");
+  if (f.scope==='past') where.push("COALESCE(e.end_date,e.start_date)<date('now')");
+  for(const key of ['type','participation']) if(f[key]) {where.push(`e.${key}=?`);p.push(String(f[key]));}
+  const events=all(`SELECT e.*,u.name AS creator_name FROM events e LEFT JOIN users u ON u.id=e.created_by ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY e.start_date ${f.scope==='past'?'DESC':'ASC'}`,...p);
+  const parts=all('SELECT p.*,u.name,u.team FROM event_participants p JOIN users u ON u.id=p.user_id');
+  const visible=visibleUserIds(user);
+  return events.map(e=>{const participants=parts.filter(p=>p.event_id===e.id);return {...e,participants,joined:participants.some(p=>p.user_id===user.id),can_manage:ROLE_RANK[user.role]>=2 && (user.role==='director'||visible.includes(e.created_by))};});
 }
 
-export function createEvent(user, d) {
+function _createEvent(user, d) {
+  d = parse(eventSchema, d);
+  checkDates(d.start_date, d.end_date);
   requireRole(user, 'manager');
   if (!d.title || !d.start_date || !d.type) throw new HttpError(400, 'Başlık, tür ve başlangıç tarihi zorunlu');
   const { lastInsertRowid: id } = run(
@@ -253,21 +277,24 @@ export function createEvent(user, d) {
   return listEvents(user).find((e) => e.id === Number(id));
 }
 
-export function joinEvent(user, id, role = 'attendee', targetRef) {
+function _joinEvent(user, id, role = 'attendee', targetRef) {
   const ev = get('SELECT * FROM events WHERE id = ?', Number(id));
   if (!ev) throw new HttpError(404, 'Etkinlik bulunamadı');
+  if (ev.status === 'cancelled') throw new HttpError(400, 'İptal edilmiş etkinliğe katılınamaz');
+  if ((ev.end_date || ev.start_date) < today()) throw new HttpError(400, 'Geçmiş etkinliğe yeni kayıt yapılamaz');
+  role = parse(z.enum(['attendee','speaker','organizer']), role);
   let target = user;
   if (targetRef) {
     target = mustResolve(targetRef);
     if (target.id !== user.id) { requireRole(user, 'manager'); assertCanAssign(user, target); }
   }
-  run('INSERT OR REPLACE INTO event_participants (event_id,user_id,role,status) VALUES (?,?,?,?)', ev.id, target.id, role, 'registered');
+  run("INSERT INTO event_participants (event_id,user_id,role,status) VALUES (?,?,?,'registered') ON CONFLICT(event_id,user_id) DO UPDATE SET role=excluded.role", ev.id,target.id,role);
   if (target.id !== user.id) notify(target.id, { type: 'event', title: 'Etkinliğe kaydedildiniz', body: ev.title, link: `/events?highlight=${ev.id}` });
   broadcastChange('events');
   return listEvents(user).find((e) => e.id === ev.id);
 }
 
-export function leaveEvent(user, id) {
+function _leaveEvent(user, id) {
   run('DELETE FROM event_participants WHERE event_id = ? AND user_id = ?', Number(id), user.id);
   broadcastChange('events');
   return listEvents(user).find((e) => e.id === Number(id));
@@ -294,7 +321,8 @@ export function listCompetencies(user, f = {}) {
   }));
 }
 
-export function upsertSkill(user, d) {
+function _upsertSkill(user, d) {
+  d = parse(skillSchema, d);
   const target = d.user ? mustResolve(d.user) : user;
   if (target.id !== user.id) { requireRole(user, 'manager'); assertCanAssign(user, target); }
   const level = Math.max(1, Math.min(5, Number(d.level) || 1));
@@ -307,7 +335,9 @@ export function upsertSkill(user, d) {
   return listCompetencies(user, { user: target.id })[0];
 }
 
-export function addCertification(user, d) {
+function _addCertification(user, d) {
+  d = parse(certSchema, d);
+  checkDates(d.obtained_at || today(), d.expires_at);
   const target = d.user ? mustResolve(d.user) : user;
   if (target.id !== user.id) { requireRole(user, 'manager'); assertCanAssign(user, target); }
   run('INSERT INTO certifications (user_id,name,issuer,obtained_at,expires_at) VALUES (?,?,?,?,?)',
@@ -325,7 +355,8 @@ export function listAnnouncements(user) {
   );
 }
 
-export function createAnnouncement(user, d) {
+function _createAnnouncement(user, d) {
+  d = parse(announcementSchema, d);
   requireRole(user, 'manager');
   if (!d.title || !d.body) throw new HttpError(400, 'Başlık ve içerik zorunlu');
   const audience = user.role === 'director' ? d.audience || 'all' : user.team;
@@ -337,10 +368,15 @@ export function createAnnouncement(user, d) {
 }
 
 // ---------------------------------------------------------------- Raporlama
+function reportUserIds(user, input={}) {
+  requireRole(user,'manager');
+  const {team}=parse(z.object({team:z.string().trim().max(100).optional()}),input);
+  const ids=visibleUserIds(user);
+  return team ? all(`SELECT id FROM users WHERE team = ? AND id IN ${inList(ids)}`,team).map(u=>u.id) : ids;
+}
+
 export function reportSummary(user, f = {}) {
-  requireRole(user, 'manager');
-  let ids = visibleUserIds(user);
-  if (f.team) ids = all(`SELECT id FROM users WHERE team LIKE ? AND id IN ${inList(ids)}`, `%${f.team}%`).map((r) => r.id);
+  const ids=reportUserIds(user,f);
   const scope = `t.assignee_id IN ${inList(ids)}`;
   const tasks = all(`${TASK_SELECT} WHERE ${scope}`);
   const count = (key) => tasks.reduce((acc, t) => ((acc[t[key]] = (acc[t[key]] || 0) + 1), acc), {});
@@ -371,7 +407,7 @@ export function reportSummary(user, f = {}) {
     return { team, total: sum('total'), open: sum('open'), done: sum('done'), overdue: sum('overdue') };
   });
   const eventStats = all(
-    `SELECT e.participation, COUNT(DISTINCT e.id) AS events, COUNT(p.user_id) AS participants
+    `SELECT e.participation, COUNT(DISTINCT CASE WHEN p.user_id IS NOT NULL THEN e.id END) AS events, COUNT(p.user_id) AS participants
      FROM events e LEFT JOIN event_participants p ON p.event_id = e.id AND p.user_id IN ${inList(ids)} GROUP BY e.participation`,
   );
   const expiringCerts = all(
@@ -402,20 +438,22 @@ export function reportSummary(user, f = {}) {
   };
 }
 
-export function reportCsv(user) {
-  requireRole(user, 'manager');
-  const ids = visibleUserIds(user);
+export function reportCsv(user, f = {}) {
+  const ids=reportUserIds(user,f);
   const rows = all(`${TASK_SELECT} WHERE t.assignee_id IN ${inList(ids)} ORDER BY t.id`);
   const head = ['ID', 'Başlık', 'Tür', 'Kategori', 'Öncelik', 'Durum', 'Sorumlu', 'Yedek', 'Bitiş', 'Gecikmiş', 'Tamamlanma'];
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const esc = (v) => {
+    let value = String(v ?? '');
+    if (/^[\s\uFEFF]*[=+@-]/.test(value)) value = "'" + value;
+    return '"' + value.replace(/"/g, '""') + '"';
+  };
   const lines = rows.map((t) => [t.id, t.title, TYPE_LABEL[t.type], t.category, PRIORITY_LABEL[t.priority], STATUS_LABEL[t.status], t.assignee_name, t.backup_name, t.due_date, t.overdue ? 'Evet' : 'Hayır', t.completed_at].map(esc).join(';'));
   return '﻿' + [head.map(esc).join(';'), ...lines].join('\r\n');
 }
 
 /** Toplu bildirim: kapsamdaki herkese açık/gecikmiş görev özetini gönderir. */
-export function sendDigest(user) {
-  requireRole(user, 'manager');
-  const ids = visibleUserIds(user).filter((id) => id !== user.id);
+function _sendDigest(user, f={}) {
+  const ids=reportUserIds(user,f).filter(id=>id!==user.id);
   let sent = 0;
   for (const uid of ids) {
     const open = get("SELECT COUNT(*) AS c FROM tasks WHERE assignee_id = ? AND status != 'done'", uid).c;
@@ -428,18 +466,20 @@ export function sendDigest(user) {
     });
     sent++;
   }
-  const s = reportSummary(user);
+  const s = reportSummary(user,f);
   notify(user.id, { type: 'report', title: 'Rapor özeti gönderildi', body: `${sent} kişiye bildirim gitti. Açık: ${s.totals.open}, gecikmiş: ${s.totals.overdue}.`, link: '/reports' });
   return { sent, totals: s.totals };
 }
 
 // ---------------------------------------------------------------- Bildirimler
+export function unreadNotifications(user) { return get('SELECT COUNT(*) AS count FROM notifications WHERE user_id=? AND is_read=0',user.id); }
 export function listNotifications(user, f = {}) {
-  return all(`SELECT * FROM notifications WHERE user_id = ? ${f.unread ? 'AND is_read = 0' : ''} ORDER BY id DESC LIMIT 50`, user.id);
+  return all(`SELECT * FROM notifications WHERE user_id = ? ${f.unread === true || f.unread === 'true' ? 'AND is_read = 0' : ''} ORDER BY id DESC LIMIT 50`, user.id);
 }
-export function markNotificationsRead(user, id) {
+function _markNotificationsRead(user, id) {
   if (id) run('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', Number(id), user.id);
   else run('UPDATE notifications SET is_read = 1 WHERE user_id = ?', user.id);
+  notificationsChanged(user.id);
   return { ok: true };
 }
 
@@ -455,19 +495,113 @@ export function checkOverdue() {
 
 // ---------------------------------------------------------------- Dashboard
 export function dashboard(user) {
-  const mine = listTasks(user, { mine: true });
-  const open = mine.filter((t) => t.status !== 'done');
-  return {
-    my_open: open.length,
-    my_overdue: open.filter((t) => t.overdue).length,
-    my_critical: open.filter((t) => t.priority === 'critical').length,
-    my_backup: open.filter((t) => t.backup_assignee_id === user.id).length,
-    my_done_week: mine.filter((t) => t.completed_at && t.completed_at >= addDays(today(), -7)).length,
-    today_tasks: open.filter((t) => t.due_date <= today()).slice(0, 8),
-    upcoming_events: listEvents(user, { scope: 'upcoming' }).slice(0, 4),
-    announcements: listAnnouncements(user).slice(0, 3),
-    team: ROLE_RANK[user.role] >= ROLE_RANK.manager ? reportSummary(user).totals : null,
-  };
+  const counts=get(`SELECT SUM(status!='done') AS my_open,
+    SUM(status!='done' AND due_date<date('now')) AS my_overdue,
+    SUM(status!='done' AND priority='critical') AS my_critical,
+    SUM(status!='done' AND backup_assignee_id=?) AS my_backup,
+    SUM(status='done' AND completed_at>=date('now','-7 days')) AS my_done_week
+    FROM tasks WHERE assignee_id=? OR backup_assignee_id=?`,user.id,user.id,user.id);
+  return {...Object.fromEntries(Object.entries(counts).map(([k,v])=>[k,v||0])),
+    today_tasks:all(`${TASK_SELECT} WHERE (t.assignee_id=? OR t.backup_assignee_id=?) AND t.status!='done' AND t.due_date<=date('now') ORDER BY t.due_date,t.id LIMIT 8`,user.id,user.id),
+    upcoming_events:listEvents(user,{scope:'upcoming'}).filter(e=>e.status!=='cancelled').slice(0,4),
+    announcements:listAnnouncements(user).slice(0,3),
+    team:ROLE_RANK[user.role]>=2?reportSummary(user).totals:null};
 }
 
 export { db };
+
+function managedEvent(user,id) {
+  requireRole(user,'manager');
+  const event=get('SELECT * FROM events WHERE id=?',Number(id));
+  if(!event) throw new HttpError(404,'Etkinlik bulunamadı');
+  if(user.role!=='director' && !visibleUserIds(user).includes(event.created_by)) throw new HttpError(403,'Bu etkinliği yönetme yetkiniz yok');
+  return event;
+}
+function _updateEvent(user,id,patch) {
+  const event=managedEvent(user,id);
+  patch=parse(eventSchema.partial(),patch);
+  const merged={...event,...patch};
+  checkDates(merged.start_date,merged.end_date);
+  for(const [key,value] of Object.entries(patch)) run(`UPDATE events SET ${key}=? WHERE id=?`,value||null,event.id);
+  for(const {user_id} of all('SELECT user_id FROM event_participants WHERE event_id=?',event.id)) notify(user_id,{type:'event',title:patch.status==='cancelled'?'Etkinlik iptal edildi':'Etkinlik güncellendi',body:merged.title,link:`/events?scope=all&highlight=${event.id}`});
+  broadcastChange('events');
+  return listEvents(user).find(e=>e.id===event.id);
+}
+function _updateAttendance(user,id,targetId,patch) {
+  managedEvent(user,id);
+  const target=mustResolve(targetId);
+  assertCanAssign(user,target);
+  const status=parse(z.enum(['registered','attended']),patch.status);
+  const result=run('UPDATE event_participants SET status=? WHERE event_id=? AND user_id=?',status,Number(id),target.id);
+  if(!result.changes) throw new HttpError(404,'Katılımcı bulunamadı');
+  broadcastChange('events');
+  return {ok:true};
+}
+function ownRecord(user,table,id) {
+  const record=get(`SELECT * FROM ${table} WHERE id=?`,Number(id));
+  if(!record) throw new HttpError(404,'Kayıt bulunamadı');
+  if(record.user_id!==user.id) {requireRole(user,'manager');assertCanAssign(user,mustResolve(record.user_id));}
+  return record;
+}
+function _updateCertification(user,id,input) {
+  const record=ownRecord(user,'certifications',id);
+  const d=parse(certSchema.omit({user:true}).partial(),input);
+  checkDates(d.obtained_at||record.obtained_at,d.expires_at===undefined?record.expires_at:d.expires_at);
+  for(const [key,value] of Object.entries(d)) run(`UPDATE certifications SET ${key}=? WHERE id=?`,value||null,record.id);
+  broadcastChange('competencies');
+  return get('SELECT * FROM certifications WHERE id=?',record.id);
+}
+function _deleteCertification(user,id) {
+  const record=ownRecord(user,'certifications',id);run('DELETE FROM certifications WHERE id=?',record.id);broadcastChange('competencies');return {deleted:record.id};
+}
+function _deleteSkill(user,id) {
+  const record=ownRecord(user,'skills',id);run('DELETE FROM skills WHERE id=?',record.id);broadcastChange('competencies');return {deleted:record.id};
+}
+export function listAudit(user) {
+  requireRole(user,'director');
+  return all('SELECT a.*,u.name AS actor_name FROM audit_log a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 100');
+}
+function mutate(user,action,args,fn) {
+  return transaction(()=>{
+    const result=fn();
+    const details=JSON.stringify({record_id:result?.id??result?.deleted??(typeof args[0]!=='object'?args[0]:null),fields:Object.keys(args.find(a=>a && typeof a==='object')||{})});
+    run('INSERT INTO audit_log(actor_id,action,details) VALUES (?,?,?)',user.id,action,details);
+    return result;
+  });
+}
+
+export function updateUserRole(user,...args) {return mutate(user,'updateUserRole',args,()=>_updateUserRole(user,...args));}
+
+export function createTask(user,...args) {return mutate(user,'createTask',args,()=>_createTask(user,...args));}
+
+export function updateTask(user,...args) {return mutate(user,'updateTask',args,()=>_updateTask(user,...args));}
+
+export function deleteTask(user,...args) {return mutate(user,'deleteTask',args,()=>_deleteTask(user,...args));}
+
+export function addComment(user,...args) {return mutate(user,'addComment',args,()=>_addComment(user,...args));}
+
+export function createEvent(user,...args) {return mutate(user,'createEvent',args,()=>_createEvent(user,...args));}
+
+export function joinEvent(user,...args) {return mutate(user,'joinEvent',args,()=>_joinEvent(user,...args));}
+
+export function leaveEvent(user,...args) {return mutate(user,'leaveEvent',args,()=>_leaveEvent(user,...args));}
+
+export function upsertSkill(user,...args) {return mutate(user,'upsertSkill',args,()=>_upsertSkill(user,...args));}
+
+export function addCertification(user,...args) {return mutate(user,'addCertification',args,()=>_addCertification(user,...args));}
+
+export function createAnnouncement(user,...args) {return mutate(user,'createAnnouncement',args,()=>_createAnnouncement(user,...args));}
+
+export function sendDigest(user,...args) {return mutate(user,'sendDigest',args,()=>_sendDigest(user,...args));}
+
+export function markNotificationsRead(user,...args) {return mutate(user,'markNotificationsRead',args,()=>_markNotificationsRead(user,...args));}
+
+export function updateEvent(user,...args) {return mutate(user,'updateEvent',args,()=>_updateEvent(user,...args));}
+
+export function updateAttendance(user,...args) {return mutate(user,'updateAttendance',args,()=>_updateAttendance(user,...args));}
+
+export function updateCertification(user,...args) {return mutate(user,'updateCertification',args,()=>_updateCertification(user,...args));}
+
+export function deleteCertification(user,...args) {return mutate(user,'deleteCertification',args,()=>_deleteCertification(user,...args));}
+
+export function deleteSkill(user,...args) {return mutate(user,'deleteSkill',args,()=>_deleteSkill(user,...args));}

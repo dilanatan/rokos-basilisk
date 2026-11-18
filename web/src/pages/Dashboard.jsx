@@ -1,3 +1,4 @@
+import {RequestState} from '../components/RequestState.jsx';
 import { Link } from 'react-router-dom';
 import { ListChecks, AlertTriangle, Flame, LifeBuoy, CheckCircle2, CalendarDays, Megaphone, Users } from 'lucide-react';
 import { useAuth, useLive } from '../auth.jsx';
@@ -5,8 +6,9 @@ import { Card, Stat, PageHeader, PriorityBadge, StatusBadge, Badge, EVENT_TYPE, 
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { data: d } = useLive('/dashboard');
-  if (!d) return null;
+  const request=useLive('/dashboard');
+  const {data:d}=request;
+  if(request.error||!d)return <RequestState {...request}/>;
   return (
     <div className="mx-auto max-w-7xl">
       <PageHeader title={`Hoş geldin, ${user.name.split(' ')[0]}`} subtitle={`${user.title} · ${user.team}`} />
